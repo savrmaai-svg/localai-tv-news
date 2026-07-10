@@ -25,23 +25,24 @@ def _font_face():
 
 
 def _launch_browser(p):
-    """Launch Chromium. Prefer a SYSTEM chromium (Debian's `chromium` pkg on cloud — deps guaranteed);
-    fall back to Playwright's bundled browser (local/Windows). On cloud we add LOW-MEMORY flags so the
-    free-tier (~1GB) container doesn't OOM during render: --single-process/--no-zygote collapse Chromium
-    into one lean process, cutting RAM roughly in half. If --single-process isn't accepted, retry without."""
-    base = ["--no-sandbox", "--disable-dev-shm-usage"]
-    lean = base + ["--single-process", "--no-zygote", "--disable-gpu",
-                   "--disable-software-rasterizer", "--disable-extensions",
-                   "--disable-background-networking", "--mute-audio", "--no-first-run",
-                   "--disable-breakpad", "--js-flags=--max-old-space-size=128"]
+    """Launch Chromium. Prefer a SYSTEM chromium (Linux: Debian's `chromium` pkg -> /usr/bin/chromium,
+    deps guaranteed); fall back to Playwright's bundled browser (local/Windows). Default flags are the
+    ROBUST set (stable on a normal VPS/PC). Set env LOWMEM_CHROME=1 on tiny ~1GB hosts (e.g. free
+    Streamlit) to collapse Chromium into one lean process (~half the RAM) at a small stability cost."""
+    safe = ["--no-sandbox", "--disable-dev-shm-usage"]
+    args = safe + ["--disable-gpu", "--disable-software-rasterizer", "--mute-audio", "--no-first-run"]
+    if os.environ.get("LOWMEM_CHROME"):          # opt-in for tiny ~1GB hosts (e.g. free Streamlit)
+        args = args + ["--single-process", "--no-zygote", "--disable-extensions",
+                       "--disable-background-networking", "--disable-breakpad",
+                       "--js-flags=--max-old-space-size=128"]
     for exe in ("/usr/bin/chromium", "/usr/bin/chromium-browser",
                 "/usr/bin/google-chrome", "/usr/bin/google-chrome-stable"):
         if os.path.isfile(exe):
             try:
-                return p.chromium.launch(executable_path=exe, args=lean)
+                return p.chromium.launch(executable_path=exe, args=args)
             except Exception:
-                return p.chromium.launch(executable_path=exe, args=base)
-    return p.chromium.launch(args=base)
+                return p.chromium.launch(executable_path=exe, args=safe)
+    return p.chromium.launch(args=safe)
 
 
 def render_strip(ticker_text, label_text, D, repeats=8):

@@ -23,16 +23,20 @@ python -m playwright install chromium      # for the Chrome-rendered ticker (opt
 streamlit run news_app.py --server.port 8502
 ```
 
-**Linux / VPS:**
+**Linux / VPS (Debian/Ubuntu, 2–4 GB RAM recommended):**
 
 ```bash
-sudo apt-get update && sudo apt-get install -y ffmpeg
+git clone https://github.com/savrmaai-svg/localai-tv-news.git
+cd localai-tv-news
+sudo apt-get update && sudo apt-get install -y ffmpeg chromium
 pip install -r requirements.txt
-python -m playwright install --with-deps chromium
 streamlit run news_app.py --server.port 8502 --server.address 0.0.0.0
 ```
 
-Open `http://localhost:8502`.
+Then open `http://SERVER_IP:8502` (open port 8502 in your firewall / cloud security group).
+The app uses the system `/usr/bin/chromium` automatically. If your distro has no `chromium`
+package, run `python -m playwright install --with-deps chromium` instead (installs Playwright's
+own browser + deps). On a tiny ~1 GB host, export `LOWMEM_CHROME=1` before launching.
 
 ---
 
