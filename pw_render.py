@@ -33,7 +33,9 @@ def render_strip(ticker_text, label_text, D, repeats=8):
     ticker_png = os.path.join(D, "pw_ticker.png")
     unit = (ticker_text or "") + "     •     "
     with sync_playwright() as p:
-        b = p.chromium.launch()
+        # --no-sandbox / --disable-dev-shm-usage: required to launch in cloud containers (no user
+        # namespaces, tiny /dev/shm). Harmless locally.
+        b = p.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
         pg = b.new_page(device_scale_factor=1)          # 1x -> image px == CSS px (exact strip dims)
 
         # 1) RED parallelogram + label  -> transparent PNG (element screenshot)

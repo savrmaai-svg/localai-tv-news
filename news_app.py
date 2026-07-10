@@ -19,6 +19,32 @@ else:
             import imageio_ffmpeg; FF = imageio_ffmpeg.get_ffmpeg_exe()
         except Exception:
             pass
+
+
+def _ensure_chromium(log=lambda *_a: None):
+    """Make a Chromium available to Playwright on Linux/cloud. Streamlit Cloud installs the
+    `playwright` pip pkg but NOT the browser, so we fetch it once per container. Never raises;
+    returns True if a browser is ready (Windows: user installs locally, treated as ready)."""
+    import sys
+    if os.name == "nt":
+        return True                       # local: `python -m playwright install chromium`
+    flag = os.path.join(tempfile.gettempdir(), "pw_chromium_ready")
+    if os.path.isfile(flag):
+        return True
+    try:
+        log("installing Chrome engine (first run only, ~30-60s)…")
+        r = subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"],
+                           capture_output=True, text=True, timeout=420)
+        if r.returncode == 0:
+            open(flag, "w").close()
+            return True
+        log(f"chromium install failed: {(r.stderr or r.stdout or '')[-200:]}")
+        return False
+    except Exception as e:
+        log(f"chromium install error: {type(e).__name__}")
+        return False
+
+
 NIRMALA = r"C:\Windows\Fonts\Nirmala.ttf"
 FONTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
 NOTO_TTF = os.path.join(FONTS_DIR, "NotoSansTelugu-Bold.ttf")
@@ -308,6 +334,7 @@ def render(main_clips, intro, logo, red_text, bottom_text, section_titles, out_p
     label_png, tick_img, cyc, ass = None, None, 0, None
     try:
         import sys, json
+        _ensure_chromium(log)             # cloud: fetch Chromium if missing (Streamlit Cloud needs this)
         # Playwright sync API can't run inside Streamlit's event loop -> run it in a CLEAN subprocess
         json.dump({"ticker": bottom_text or "", "label": red_text or ""},
                   open(os.path.join(D, "pw_params.json"), "w", encoding="utf-8"))

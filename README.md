@@ -41,7 +41,7 @@ Open `http://localhost:8502`.
 This app is **CPU/RAM heavy** (multi-minute ffmpeg renders + a headless browser).
 
 - **Recommended — a VPS / AWS box** (2–4 GB RAM): reliable 24/7. Install ffmpeg + `playwright install --with-deps chromium`, then run behind `systemd` or `pm2`, optionally with a reverse proxy. This is the right host for full 9-minute renders.
-- **Streamlit Community Cloud** (free): works for **light/demo** use — `packages.txt` installs ffmpeg and the app auto-falls back to libass (Noto font is bundled) if Chromium isn't available. Full 9-minute renders may be slow or hit the free-tier resource limits.
+- **Streamlit Community Cloud** (free): `packages.txt` installs ffmpeg + Chromium's system libraries, and the app **auto-installs the Chromium browser on first run** (`_ensure_chromium`), so the Chrome-rendered ticker works on cloud too. If Chromium still can't launch, it auto-falls back to libass (bundled Noto font). Full 9-minute renders may be slow or hit the free-tier resource/memory limits.
 
 Bundled font: `fonts/NotoSansTelugu-Bold.ttf` (SIL OFL). Chrome renders the ticker; the libass fallback uses this same Noto font, so Telugu shapes correctly on Linux too.
 
