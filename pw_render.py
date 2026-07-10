@@ -24,6 +24,18 @@ def _font_face():
             f"font-weight:bold;}}")
 
 
+def _launch_browser(p):
+    """Launch Chromium. Prefer a SYSTEM chromium (Debian's `chromium` pkg on cloud — its apt deps are
+    guaranteed present, correct t64 names); fall back to Playwright's bundled browser (local/Windows).
+    --no-sandbox / --disable-dev-shm-usage are required inside cloud containers and harmless locally."""
+    args = ["--no-sandbox", "--disable-dev-shm-usage"]
+    for exe in ("/usr/bin/chromium", "/usr/bin/chromium-browser",
+                "/usr/bin/google-chrome", "/usr/bin/google-chrome-stable"):
+        if os.path.isfile(exe):
+            return p.chromium.launch(executable_path=exe, args=args)
+    return p.chromium.launch(args=args)
+
+
 def render_strip(ticker_text, label_text, D, repeats=8):
     """Render label.png (transparent parallelogram+label) and ticker2x.png (navy scrolling text).
     Returns (label_png, ticker_png, cycle_width_px)."""
@@ -33,9 +45,7 @@ def render_strip(ticker_text, label_text, D, repeats=8):
     ticker_png = os.path.join(D, "pw_ticker.png")
     unit = (ticker_text or "") + "     •     "
     with sync_playwright() as p:
-        # --no-sandbox / --disable-dev-shm-usage: required to launch in cloud containers (no user
-        # namespaces, tiny /dev/shm). Harmless locally.
-        b = p.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        b = _launch_browser(p)
         pg = b.new_page(device_scale_factor=1)          # 1x -> image px == CSS px (exact strip dims)
 
         # 1) RED parallelogram + label  -> transparent PNG (element screenshot)

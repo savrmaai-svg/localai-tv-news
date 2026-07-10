@@ -28,6 +28,9 @@ def _ensure_chromium(log=lambda *_a: None):
     import sys
     if os.name == "nt":
         return True                       # local: `python -m playwright install chromium`
+    if any(os.path.isfile(x) for x in ("/usr/bin/chromium", "/usr/bin/chromium-browser",
+                                       "/usr/bin/google-chrome", "/usr/bin/google-chrome-stable")):
+        return True                       # cloud: Debian's `chromium` pkg (packages.txt) — no download
     flag = os.path.join(tempfile.gettempdir(), "pw_chromium_ready")
     if os.path.isfile(flag):
         return True
