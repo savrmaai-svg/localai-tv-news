@@ -504,6 +504,15 @@ def main():
         st.markdown("---")
         st.caption("🟢 v2.0 · Chrome-rendered ticker")
         st.caption("🔗 GitHub  ·  ❓ Help  ·  📄 Docs")
+        with st.expander("🩺 System info"):
+            import platform as _pf
+            _info = {"python": _pf.python_version(), "platform": _pf.platform(), "ffmpeg": FF}
+            try:
+                _osr = _pf.freedesktop_os_release()
+                _info["distro"] = f"{_osr.get('ID', '?')} {_osr.get('VERSION_ID', '?')} ({_osr.get('VERSION_CODENAME', '?')})"
+            except Exception:
+                _info["distro"] = "n/a (Windows/local)"
+            st.json(_info)
 
     # ---- hero ----
     st.markdown("""<div class='hero'>
