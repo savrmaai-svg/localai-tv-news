@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+Thumbs.db
+
+# temp render outputs (never in repo, but just in case)
+*.mp4
+*.mov
+*.webm
+newsui_*/
+news_*/
+cine_*/
+
+# keep: fonts/*.ttf, fonts/OFL.txt
