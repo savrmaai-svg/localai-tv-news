@@ -515,6 +515,12 @@ def main():
                 _info["distro"] = f"{_osr.get('ID', '?')} {_osr.get('VERSION_ID', '?')} ({_osr.get('VERSION_CODENAME', '?')})"
             except Exception:
                 _info["distro"] = "n/a (Windows/local)"
+            _chr = next((x for x in ("/usr/bin/chromium", "/usr/bin/chromium-browser",
+                                     "/usr/bin/google-chrome", "/usr/bin/google-chrome-stable")
+                         if os.path.isfile(x)), None)
+            _info["chromium"] = _chr or ("bundled/Playwright (local)" if os.name == "nt" else "NOT installed yet — still building")
+            _info["chrome_ready"] = "✅ YES — Telugu will render via Chrome" if (_chr or os.name == "nt") \
+                else "⏳ not yet (still on old build or building)"
             st.json(_info)
 
     # ---- hero ----
