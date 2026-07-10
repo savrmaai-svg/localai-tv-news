@@ -25,15 +25,23 @@ def _font_face():
 
 
 def _launch_browser(p):
-    """Launch Chromium. Prefer a SYSTEM chromium (Debian's `chromium` pkg on cloud — its apt deps are
-    guaranteed present, correct t64 names); fall back to Playwright's bundled browser (local/Windows).
-    --no-sandbox / --disable-dev-shm-usage are required inside cloud containers and harmless locally."""
-    args = ["--no-sandbox", "--disable-dev-shm-usage"]
+    """Launch Chromium. Prefer a SYSTEM chromium (Debian's `chromium` pkg on cloud — deps guaranteed);
+    fall back to Playwright's bundled browser (local/Windows). On cloud we add LOW-MEMORY flags so the
+    free-tier (~1GB) container doesn't OOM during render: --single-process/--no-zygote collapse Chromium
+    into one lean process, cutting RAM roughly in half. If --single-process isn't accepted, retry without."""
+    base = ["--no-sandbox", "--disable-dev-shm-usage"]
+    lean = base + ["--single-process", "--no-zygote", "--disable-gpu",
+                   "--disable-software-rasterizer", "--disable-extensions",
+                   "--disable-background-networking", "--mute-audio", "--no-first-run",
+                   "--disable-breakpad", "--js-flags=--max-old-space-size=128"]
     for exe in ("/usr/bin/chromium", "/usr/bin/chromium-browser",
                 "/usr/bin/google-chrome", "/usr/bin/google-chrome-stable"):
         if os.path.isfile(exe):
-            return p.chromium.launch(executable_path=exe, args=args)
-    return p.chromium.launch(args=args)
+            try:
+                return p.chromium.launch(executable_path=exe, args=lean)
+            except Exception:
+                return p.chromium.launch(executable_path=exe, args=base)
+    return p.chromium.launch(args=base)
 
 
 def render_strip(ticker_text, label_text, D, repeats=8):
