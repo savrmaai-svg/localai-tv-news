@@ -1,3 +1,13 @@
+---
+title: LocalAI TV Telugu News
+emoji: 📺
+colorFrom: red
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # 📺 LocalAI TV — Telugu News Video Generator
 
 Turn a NotebookLM "Brief" clip into a broadcast-style **Telugu news video** in one click.
