@@ -15,6 +15,7 @@ NAVY = "#06215B"
 STROKE = "#301A0A"
 LABEL_SIZE = 44
 TICK_SIZE = 56
+TICK_GAP = " " * 6      # wide gap between scrolling phrases (em-spaces, no bullet — matches reference)
 FONT_TTF = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts", "NotoSansTelugu-Bold.ttf")
 
 
@@ -52,7 +53,7 @@ def render_strip(ticker_text, label_text, D, repeats=8):
     ff = _font_face()
     label_png = os.path.join(D, "pw_label.png")
     ticker_png = os.path.join(D, "pw_ticker.png")
-    unit = (ticker_text or "") + "     •     "
+    unit = _esc(ticker_text or "") + TICK_GAP
     with sync_playwright() as p:
         b = _launch_browser(p)
         pg = b.new_page(device_scale_factor=1)          # 1x -> image px == CSS px (exact strip dims)
@@ -76,10 +77,10 @@ def render_strip(ticker_text, label_text, D, repeats=8):
         # 2) navy ticker (repeated text) -> wide PNG; cycle = width/2 (even repeats -> seamless wrap)
         tik_html = f"""<!doctype html><meta charset="utf-8"><style>{ff}
 *{{margin:0;padding:0}}body{{background:{NAVY}}}
-#t{{display:inline-block;white-space:nowrap;height:{STRIP_H}px;line-height:{STRIP_H}px;
+#t{{display:inline-block;white-space:pre;height:{STRIP_H}px;line-height:{STRIP_H}px;
  background:{NAVY};color:#fff;font-family:'NotoTel';font-weight:bold;font-size:{TICK_SIZE}px;
  letter-spacing:.5px;-webkit-text-stroke:.6px {STROKE}}}</style>
-<span id="t">{_esc(unit) * repeats}</span>"""
+<span id="t">{unit * repeats}</span>"""
         pg.set_content(tik_html); pg.wait_for_timeout(300)
         pg.locator("#t").screenshot(path=ticker_png)
         b.close()
