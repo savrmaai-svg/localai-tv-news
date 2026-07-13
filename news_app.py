@@ -399,116 +399,201 @@ def render(main_clips, intro, logo, red_text, bottom_text, section_titles, out_p
 # ---------------- Streamlit UI ----------------
 _CSS = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=JetBrains+Mono&display=swap');
-:root{ --card:rgba(255,255,255,.06); --bd:rgba(255,255,255,.09); }
-.stApp{
-  background:
-    radial-gradient(1100px 560px at 12% -12%, rgba(108,99,255,.24), transparent 60%),
-    radial-gradient(1000px 520px at 105% -5%, rgba(0,212,255,.16), transparent 55%),
-    radial-gradient(900px 720px at 55% 125%, rgba(255,75,92,.16), transparent 60%),
-    #050816;
-  background-attachment:fixed;
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono&display=swap');
+:root{
+  --bg0:#050816; --card:rgba(255,255,255,.05); --card2:rgba(255,255,255,.03);
+  --bd:rgba(255,255,255,.08); --bd2:rgba(255,255,255,.14);
+  --purple:#7C3AED; --pink:#EC4899; --orange:#FF8A00; --blue:#38BDF8; --green:#22C55E;
+  --txt:#EAECF5; --muted:#8B93B0;
 }
-html,body,[class*="css"]{ font-family:'Poppins',sans-serif; }
+
+/* ---------- base ---------- */
+.stApp{ background:
+    radial-gradient(1200px 700px at 8% -10%, rgba(124,58,237,.20), transparent 55%),
+    radial-gradient(1100px 650px at 100% 0%, rgba(56,189,248,.14), transparent 50%),
+    radial-gradient(1000px 800px at 60% 120%, rgba(236,72,153,.14), transparent 55%),
+    var(--bg0); background-attachment:fixed; }
+html,body,[class*="css"],.stApp,button,input,textarea{ font-family:'Plus Jakarta Sans','Inter',sans-serif; }
 [data-testid="stHeader"]{ background:transparent; }
-.block-container{ padding-top:1.1rem; max-width:1260px; }
-h1,h2,h3,h4,h5,p,label,span,li,.stMarkdown{ color:#EAECF5; }
+[data-testid="stToolbar"]{ display:none; }
+.block-container{ padding-top:1.4rem; padding-bottom:1rem; max-width:1340px; position:relative; z-index:1; }
+h1,h2,h3,h4,h5,p,label,span,li,.stMarkdown{ color:var(--txt); }
 
-/* hero */
-.hero{ border-radius:24px; padding:32px 38px; margin:2px 0 22px; background:var(--card);
-  border:1px solid var(--bd); backdrop-filter:blur(14px); box-shadow:0 22px 60px rgba(0,0,0,.5);
-  position:relative; overflow:hidden; animation:fade .7s ease both; }
-.hero::before{ content:""; position:absolute; inset:-45%;
-  background:conic-gradient(from 0deg,#FF4B5C,#FF7A18,#6C63FF,#00D4FF,#FF4B5C);
-  filter:blur(72px); opacity:.26; animation:spin 14s linear infinite; z-index:0; }
-.hero>*{ position:relative; z-index:1; }
-.hero h1{ font-size:2.4rem; font-weight:800; margin:0; letter-spacing:.2px;
-  background:linear-gradient(90deg,#FF4B5C,#FF7A18 38%,#6C63FF 72%,#00D4FF);
-  -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
-.hero p{ font-size:1.02rem; color:#AEB4CF; margin:.55rem 0 .7rem; }
-.badge{ display:inline-block; margin:6px 6px 0 0; padding:6px 13px; border-radius:999px;
-  background:rgba(255,255,255,.07); border:1px solid var(--bd); font-size:.78rem; color:#D8E6FF; }
+/* ---------- aurora animated background ---------- */
+.aurora{ position:fixed; inset:0; z-index:0; overflow:hidden; pointer-events:none; }
+.aurora b{ position:absolute; border-radius:50%; filter:blur(95px); opacity:.45; animation:float 20s ease-in-out infinite; }
+.aurora .b1{ width:520px;height:520px; left:-8%; top:-14%; background:var(--purple); }
+.aurora .b2{ width:460px;height:460px; right:-6%; top:0%; background:var(--blue); animation-delay:-7s; }
+.aurora .b3{ width:520px;height:520px; left:34%; bottom:-24%; background:var(--pink); animation-delay:-13s; }
+@keyframes float{ 0%,100%{transform:translate(0,0) scale(1)} 33%{transform:translate(45px,32px) scale(1.08)} 66%{transform:translate(-32px,22px) scale(.94)} }
 
-/* section header */
-.sec{ font-weight:700; font-size:1.08rem; margin:2px 0 12px; display:flex; align-items:center; gap:10px; color:#fff; }
-.sec .dot{ width:9px; height:24px; border-radius:6px; background:linear-gradient(#FF4B5C,#FF7A18); }
+/* ---------- sidebar ---------- */
+[data-testid="stSidebar"]{ background:linear-gradient(180deg,rgba(14,23,43,.96),rgba(8,12,26,.97))!important;
+  border-right:1px solid var(--bd); backdrop-filter:blur(16px); }
+[data-testid="stSidebar"] *{ color:#C7CDE6; }
+.sb-logo{ display:flex; align-items:center; gap:12px; padding:8px 4px 4px; }
+.sb-logo .mark{ width:44px;height:44px; border-radius:13px; display:grid;place-items:center; font-size:1.45rem;
+  background:linear-gradient(135deg,var(--purple),var(--pink)); box-shadow:0 8px 24px rgba(124,58,237,.5); }
+.sb-logo .t1{ font-weight:800; font-size:1.2rem; line-height:1.05; color:#fff; }
+.sb-logo .t1 b{ background:linear-gradient(90deg,var(--blue),var(--pink)); -webkit-background-clip:text;-webkit-text-fill-color:transparent; }
+.sb-logo .t2{ color:var(--muted); font-size:.7rem; letter-spacing:.5px; }
+.nav{ display:flex; flex-direction:column; gap:5px; margin:16px 0 6px; }
+.nav a{ display:flex; align-items:center; gap:12px; padding:11px 14px; border-radius:13px; color:#C4CBE4!important;
+  font-weight:600; font-size:.93rem; text-decoration:none; position:relative; transition:.2s; cursor:pointer; }
+.nav a .ic{ font-size:1.02rem; width:20px; text-align:center; }
+.nav a:hover{ background:rgba(255,255,255,.05); color:#fff!important; transform:translateX(2px); }
+.nav a.active{ background:linear-gradient(90deg,rgba(124,58,237,.30),rgba(236,72,153,.10));
+  color:#fff!important; box-shadow:0 6px 20px rgba(124,58,237,.22); }
+.nav a.active::before{ content:""; position:absolute; left:0; top:18%; height:64%; width:4px; border-radius:4px;
+  background:linear-gradient(var(--purple),var(--pink)); }
+.plan{ margin:16px 2px 8px; padding:16px; border-radius:16px; border:1px solid var(--bd2);
+  background:linear-gradient(160deg,rgba(124,58,237,.20),rgba(255,138,0,.07)); }
+.plan .top{ display:flex; justify-content:space-between; align-items:center; }
+.plan .top span{ color:var(--muted); font-size:.78rem; } .plan .crown{ font-size:1.05rem; }
+.plan .lvl{ font-weight:800; font-size:1.1rem; margin:2px 0 1px;
+  background:linear-gradient(90deg,var(--orange),var(--pink)); -webkit-background-clip:text;-webkit-text-fill-color:transparent; }
+.plan .exp{ color:var(--muted); font-size:.74rem; }
+.profile{ display:flex; align-items:center; gap:10px; margin:10px 2px 2px; padding:10px 12px; border-radius:14px;
+  background:var(--card); border:1px solid var(--bd); }
+.profile .av{ width:36px;height:36px;border-radius:11px; display:grid;place-items:center; font-weight:800; color:#fff;
+  background:linear-gradient(135deg,var(--purple),var(--blue)); }
+.profile .pn{ font-weight:700; font-size:.88rem; color:#fff; } .profile .pe{ color:var(--muted); font-size:.72rem; }
 
-/* uploaders as glass cards */
-[data-testid="stFileUploader"]{ animation:fade .6s ease both; }
-[data-testid="stFileUploaderDropzone"]{ background:var(--card)!important;
-  border:1.5px dashed rgba(255,255,255,.16)!important; border-radius:18px!important; padding:16px 18px!important; transition:.25s; }
-[data-testid="stFileUploaderDropzone"]:hover{ border-color:rgba(0,212,255,.55)!important;
-  transform:translateY(-2px); box-shadow:0 14px 34px rgba(0,212,255,.14); }
-[data-testid="stWidgetLabel"] label,[data-testid="stWidgetLabel"] p{ font-weight:600!important; color:#E4E8FA!important; }
+/* ---------- hero ---------- */
+.hero{ display:flex; gap:20px; align-items:center; border-radius:22px; padding:30px 34px; margin:2px 0 20px;
+  background:linear-gradient(120deg,rgba(124,58,237,.16),rgba(236,72,153,.10) 55%,rgba(255,138,0,.10));
+  border:1px solid var(--bd2); backdrop-filter:blur(16px); box-shadow:0 24px 60px rgba(0,0,0,.45);
+  position:relative; overflow:hidden; animation:rise .6s ease both; }
+.hero-left{ flex:1; z-index:1; }
+.hero h1{ font-size:2.6rem; font-weight:800; margin:0 0 6px; letter-spacing:-.5px; color:#fff; }
+.hero h1 span{ background:linear-gradient(90deg,var(--pink),var(--orange)); -webkit-background-clip:text;-webkit-text-fill-color:transparent; }
+.hero p{ font-size:1.05rem; color:#C4CBE4; margin:0 0 16px; }
+.hero-badges{ display:flex; flex-wrap:wrap; gap:9px; }
+.hb{ display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border-radius:999px; font-size:.81rem; font-weight:600;
+  background:rgba(255,255,255,.06); border:1px solid var(--bd2); color:#E6EAF8; backdrop-filter:blur(6px); transition:.2s; }
+.hb:hover{ transform:translateY(-2px); border-color:rgba(236,72,153,.5); }
+.hero-visual{ width:210px; height:132px; position:relative; z-index:1; flex-shrink:0; }
+.monitor{ position:absolute; inset:0; border-radius:16px; display:grid; place-items:center;
+  background:linear-gradient(135deg,var(--purple),var(--pink) 58%,var(--orange)); box-shadow:0 20px 50px rgba(236,72,153,.4); }
+.monitor::after{ content:"\\25B6"; color:#fff; font-size:2.2rem; margin-left:6px; text-shadow:0 4px 14px rgba(0,0,0,.35); }
+.monitor::before{ content:""; position:absolute; width:280px;height:280px; border:1px solid rgba(255,255,255,.18);
+  border-radius:50%; left:60%; top:50%; transform:translate(-50%,-50%) rotate(16deg); }
 
-/* text inputs */
-.stTextInput input,.stTextArea textarea{ background:rgba(255,255,255,.05)!important; border-radius:14px!important;
-  border:1px solid var(--bd)!important; color:#fff!important; padding:.6rem .8rem!important; }
-.stTextInput input:focus,.stTextArea textarea:focus{ border-color:#6C63FF!important;
-  box-shadow:0 0 0 3px rgba(108,99,255,.25)!important; }
-[data-baseweb="input"]{ background:transparent!important; border-radius:14px!important; }
+/* ---------- stat cards ---------- */
+.stats{ display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin:0 0 6px; }
+.stat{ display:flex; gap:13px; align-items:center; padding:18px; border-radius:18px; background:var(--card);
+  border:1px solid var(--bd); backdrop-filter:blur(12px); transition:.22s; animation:rise .6s ease both; }
+.stat:hover{ transform:translateY(-3px); border-color:var(--bd2); box-shadow:0 16px 40px rgba(0,0,0,.32); }
+.stat-ic{ width:46px;height:46px;border-radius:13px; display:grid;place-items:center; font-size:1.3rem; flex-shrink:0; }
+.si-purple{ background:linear-gradient(135deg,rgba(124,58,237,.4),rgba(124,58,237,.12)); }
+.si-blue{ background:linear-gradient(135deg,rgba(56,189,248,.4),rgba(56,189,248,.12)); }
+.si-orange{ background:linear-gradient(135deg,rgba(255,138,0,.4),rgba(255,138,0,.12)); }
+.si-green{ background:linear-gradient(135deg,rgba(34,197,94,.4),rgba(34,197,94,.12)); }
+.stat .lab{ color:var(--muted); font-size:.79rem; font-weight:600; }
+.stat .num{ font-size:1.5rem; font-weight:800; color:#fff; line-height:1.15; }
+.stat .sub{ font-size:.72rem; color:var(--green); font-weight:600; }
+.stat .sub.on{ display:flex; align-items:center; gap:5px; }
+.stat .sub.on::before{ content:""; width:7px;height:7px;border-radius:50%; background:var(--green); box-shadow:0 0 8px var(--green); }
 
-/* buttons */
-.stButton>button,.stDownloadButton>button{ background:linear-gradient(90deg,#FF4B5C,#FF7A18)!important;
-  color:#fff!important; border:none!important; border-radius:16px!important; font-weight:700!important;
-  box-shadow:0 12px 32px rgba(255,75,92,.35)!important; transition:transform .18s, box-shadow .18s!important; }
-.stButton>button{ height:62px; font-size:1.06rem!important; letter-spacing:.3px; }
-.stButton>button:hover,.stDownloadButton>button:hover{ transform:scale(1.02);
-  box-shadow:0 18px 44px rgba(255,122,24,.5)!important; }
+/* ---------- panel titles ---------- */
+.panel-title{ display:flex; align-items:center; gap:10px; font-size:1.16rem; font-weight:700; color:#fff; margin:14px 0 14px; }
+.panel-title .pd{ width:8px;height:22px;border-radius:5px; background:linear-gradient(var(--purple),var(--pink)); }
 
-/* success card */
-.okcard{ background:linear-gradient(90deg,rgba(0,212,255,.14),rgba(108,99,255,.14)); border:1px solid var(--bd);
-  border-radius:16px; padding:14px 18px; margin:8px 0; font-size:1.02rem; animation:fade .5s ease both; }
+/* ---------- uploaders as premium cards ---------- */
+[data-testid="stFileUploader"]{ background:var(--card); border:1px solid var(--bd); border-radius:20px;
+  padding:18px 18px 14px; transition:.24s; animation:rise .55s ease both; height:100%; }
+[data-testid="stFileUploader"]:hover{ transform:translateY(-3px); border-color:rgba(124,58,237,.5);
+  box-shadow:0 18px 44px rgba(124,58,237,.18); }
+[data-testid="stFileUploader"] label p{ font-weight:700!important; color:#fff!important; font-size:.98rem!important; }
+[data-testid="stFileUploaderDropzone"]{ background:rgba(255,255,255,.02)!important;
+  border:1.5px dashed rgba(255,255,255,.16)!important; border-radius:15px!important; padding:14px 16px!important; transition:.2s; }
+[data-testid="stFileUploaderDropzone"]:hover{ border-color:rgba(56,189,248,.55)!important; background:rgba(56,189,248,.05)!important; }
+[data-testid="stFileUploaderDropzoneInstructions"] *{ color:var(--muted)!important; }
+[data-testid="stFileUploader"] button{ background:linear-gradient(90deg,var(--purple),var(--pink))!important; color:#fff!important;
+  border:none!important; border-radius:11px!important; font-weight:700!important; box-shadow:0 8px 22px rgba(124,58,237,.35)!important; transition:.18s!important; }
+[data-testid="stFileUploader"] button:hover{ transform:scale(1.04); box-shadow:0 12px 28px rgba(236,72,153,.45)!important; }
 
-/* logs / code terminal */
+/* ---------- text inputs ---------- */
+[data-testid="stWidgetLabel"] label,[data-testid="stWidgetLabel"] p{ font-weight:600!important; color:#DCE1F5!important; font-size:.9rem!important; }
+.stTextInput input,.stTextArea textarea{ background:rgba(255,255,255,.04)!important; border-radius:14px!important;
+  border:1px solid var(--bd)!important; color:#fff!important; padding:.72rem .9rem!important; font-size:.95rem!important; transition:.2s; }
+.stTextInput input:focus,.stTextArea textarea:focus{ border-color:var(--purple)!important;
+  box-shadow:0 0 0 3px rgba(124,58,237,.28)!important; }
+[data-baseweb="input"],[data-baseweb="base-input"]{ background:transparent!important; border-radius:14px!important; }
+
+/* ---------- info card ---------- */
+.infocard{ background:linear-gradient(120deg,rgba(56,189,248,.12),rgba(124,58,237,.10)); border:1px solid var(--bd2);
+  border-radius:16px; padding:14px 16px; margin-top:14px; font-size:.85rem; color:#C9D3F0; line-height:1.65; }
+.infocard b{ color:#fff; }
+
+/* ---------- buttons ---------- */
+.stButton>button,.stDownloadButton>button{ background:linear-gradient(90deg,var(--purple),var(--pink) 52%,var(--orange))!important;
+  background-size:180% auto!important; color:#fff!important; border:none!important; border-radius:16px!important; font-weight:700!important;
+  box-shadow:0 14px 38px rgba(236,72,153,.35)!important; transition:transform .18s,box-shadow .18s,background-position .5s!important; }
+.stButton>button{ height:60px; font-size:1.1rem!important; letter-spacing:.3px; margin-top:8px; }
+.stButton>button:hover,.stDownloadButton>button:hover{ transform:scale(1.02); background-position:right center!important;
+  box-shadow:0 20px 50px rgba(255,138,0,.45)!important; }
+
+/* ---------- success / logs / video / alerts ---------- */
+.okcard{ background:linear-gradient(90deg,rgba(34,197,94,.16),rgba(56,189,248,.12)); border:1px solid var(--bd2);
+  border-radius:16px; padding:14px 18px; margin:10px 0; font-size:1.02rem; animation:rise .5s ease both; }
 [data-testid="stCode"],pre{ background:#080b1a!important; border:1px solid var(--bd)!important; border-radius:14px!important; }
-[data-testid="stCode"] code,pre,code{ color:#54f5a0!important; font-family:'JetBrains Mono',monospace!important; font-size:.86rem!important; }
-
-/* video + alerts */
-[data-testid="stVideo"] video{ border-radius:18px; border:1px solid var(--bd); box-shadow:0 22px 55px rgba(0,0,0,.55); }
+[data-testid="stCode"] code,pre,code{ color:#54f5a0!important; font-family:'JetBrains Mono',monospace!important; font-size:.85rem!important; }
+[data-testid="stVideo"] video{ border-radius:18px; border:1px solid var(--bd2); box-shadow:0 22px 55px rgba(0,0,0,.55); }
 [data-testid="stNotification"],.stAlert{ border-radius:14px!important; }
+.stProgress>div>div>div{ background:linear-gradient(90deg,var(--purple),var(--blue))!important; }
 
-/* sidebar */
-[data-testid="stSidebar"]{ background:rgba(9,12,26,.9)!important; border-right:1px solid var(--bd); backdrop-filter:blur(12px); }
-[data-testid="stSidebar"] *{ color:#D6DAEE; }
+/* ---------- footer ---------- */
+.footer{ text-align:center; color:var(--muted); font-size:.82rem; margin:34px 0 6px; padding-top:18px; border-top:1px solid var(--bd); }
+.footer a{ color:var(--blue); text-decoration:none; margin:0 9px; } .footer a:hover{ color:var(--pink); }
+.footer .sep{ opacity:.35; }
 
-/* progress + spinner */
-.stProgress>div>div>div{ background:linear-gradient(90deg,#6C63FF,#00D4FF)!important; }
-
-/* scrollbar */
+/* ---------- scrollbar ---------- */
 ::-webkit-scrollbar{ width:10px; height:10px; }
-::-webkit-scrollbar-thumb{ background:linear-gradient(#6C63FF,#00D4FF); border-radius:10px; }
+::-webkit-scrollbar-thumb{ background:linear-gradient(var(--purple),var(--blue)); border-radius:10px; }
 ::-webkit-scrollbar-track{ background:transparent; }
 
-@keyframes spin{ to{ transform:rotate(360deg); } }
-@keyframes fade{ from{ opacity:0; transform:translateY(14px); } to{ opacity:1; transform:none; } }
+@keyframes rise{ from{ opacity:0; transform:translateY(16px); } to{ opacity:1; transform:none; } }
+
+@media(max-width:1100px){ .stats{ grid-template-columns:repeat(2,1fr); } .hero-visual{ display:none; } }
 </style>
 """
 
 
 def main():
-    st.set_page_config(page_title="LocalAI TV — Telugu News Generator", page_icon="📺", layout="wide")
+    st.set_page_config(page_title="LocalAI TV Studio", page_icon="📺", layout="wide",
+                       initial_sidebar_state="expanded")
     st.markdown(_CSS, unsafe_allow_html=True)
+    st.markdown("<div class='aurora'><b class='b1'></b><b class='b2'></b><b class='b3'></b></div>", unsafe_allow_html=True)
 
     # ---- sidebar ----
     with st.sidebar:
-        st.markdown("""<div style='text-align:center;padding:10px 0 6px'>
-            <div style='font-size:2.6rem;line-height:1'>📺</div>
-            <div style='font-weight:800;font-size:1.2rem;background:linear-gradient(90deg,#FF4B5C,#00D4FF);
-                 -webkit-background-clip:text;-webkit-text-fill-color:transparent'>LocalAI TV</div>
-            <div style='color:#8b90ad;font-size:.78rem;letter-spacing:.5px'>TELUGU NEWS STUDIO</div></div>""",
-                    unsafe_allow_html=True)
-        st.markdown("---")
-        st.markdown("#### ⚙️ About")
-        st.markdown("<span style='color:#AEB4CF;font-size:.88rem'>AI-powered Telugu news video generator — "
-                    "turns a NotebookLM clip into a broadcast-style news video.</span>", unsafe_allow_html=True)
-        st.markdown("#### 💡 Tips")
-        st.markdown("<span style='color:#AEB4CF;font-size:.86rem'>• Leave section times <b>empty</b> → auto-detect<br>"
-                    "• Logo can be a PNG or video/GIF<br>• Filler plays before each section<br>"
-                    "• Ticker: crisp Telugu via Chrome</span>", unsafe_allow_html=True)
-        st.markdown("---")
-        st.caption("🟢 v2.0 · Chrome-rendered ticker")
-        st.caption("🔗 GitHub  ·  ❓ Help  ·  📄 Docs")
+        st.markdown("""
+        <div class='sb-logo'>
+          <div class='mark'>📺</div>
+          <div><div class='t1'>LocalAI <b>TV</b></div><div class='t2'>AI News Studio</div></div>
+        </div>
+        <div class='nav'>
+          <a class='active'><span class='ic'>🏠</span> Dashboard</a>
+          <a><span class='ic'>🎬</span> News Generator</a>
+          <a><span class='ic'>📂</span> History</a>
+          <a><span class='ic'>🎙️</span> Voices</a>
+          <a><span class='ic'>📺</span> Branding</a>
+          <a><span class='ic'>⚙️</span> Settings</a>
+          <a><span class='ic'>📊</span> Analytics</a>
+          <a><span class='ic'>💳</span> Billing</a>
+          <a><span class='ic'>❓</span> Help &amp; Docs</a>
+        </div>
+        <div class='plan'>
+          <div class='top'><span>Your Plan</span><span class='crown'>👑</span></div>
+          <div class='lvl'>Professional</div>
+          <div class='exp'>Chrome-crisp Telugu · v2.0</div>
+        </div>
+        <div class='profile'>
+          <div class='av'>L</div>
+          <div><div class='pn'>LocalAI TV Team</div><div class='pe'>admin@localai.tv</div></div>
+        </div>
+        """, unsafe_allow_html=True)
         with st.expander("🩺 System info"):
             import platform as _pf
             _info = {"python": _pf.python_version(), "platform": _pf.platform(), "ffmpeg": FF}
@@ -526,38 +611,67 @@ def main():
             st.json(_info)
 
     # ---- hero ----
-    st.markdown("""<div class='hero'>
-        <h1>📺 LocalAI TV — Telugu News Generator</h1>
-        <p>Create professional Telugu news videos within seconds using AI.</p>
-        <span class='badge'>✨ Auto sections</span> <span class='badge'>📰 Non-stop ticker</span>
-        <span class='badge'>🔤 Chrome-crisp Telugu</span> <span class='badge'>🧹 Endcard auto-remove</span>
-    </div>""", unsafe_allow_html=True)
+    st.markdown("""
+    <div class='hero'>
+      <div class='hero-left'>
+        <h1>LocalAI TV <span>Studio</span></h1>
+        <p>Create Professional AI Powered Telugu Broadcast Videos</p>
+        <div class='hero-badges'>
+          <span class='hb'>✨ AI Powered</span>
+          <span class='hb'>🎬 Auto Sections</span>
+          <span class='hb'>📺 Live Broadcast</span>
+          <span class='hb'>🎙️ Gemini Voice</span>
+          <span class='hb'>⚡ Fast Rendering</span>
+        </div>
+      </div>
+      <div class='hero-visual'><div class='monitor'></div></div>
+    </div>
+    <div class='stats'>
+      <div class='stat'><div class='stat-ic si-purple'>🎬</div>
+        <div><div class='lab'>Output Quality</div><div class='num'>720p</div><div class='sub'>~2x faster render</div></div></div>
+      <div class='stat'><div class='stat-ic si-blue'>⚡</div>
+        <div><div class='lab'>Render Preset</div><div class='num'>veryfast</div><div class='sub'>optimized pipeline</div></div></div>
+      <div class='stat'><div class='stat-ic si-orange'>🔤</div>
+        <div><div class='lab'>Telugu Engine</div><div class='num'>Chrome</div><div class='sub'>crisp shaping</div></div></div>
+      <div class='stat'><div class='stat-ic si-green'>🟢</div>
+        <div><div class='lab'>Server Status</div><div class='num'>ONLINE</div><div class='sub on'>all systems operational</div></div></div>
+    </div>
+    """, unsafe_allow_html=True)
 
     if "nd" not in st.session_state: st.session_state.nd = tempfile.mkdtemp(prefix="newsui_")
     D = st.session_state.nd
 
-    c1, c2 = st.columns(2, gap="large")
-    with c1:
-        st.markdown("<div class='sec'><span class='dot'></span>📤 Uploads</div>", unsafe_allow_html=True)
-        main_ups = st.file_uploader("🎬 Main video (sections) — one long video OR a separate clip per section — required",
-                                    type=["mp4", "mov", "webm"], accept_multiple_files=True)
-        intro_up = st.file_uploader("🎥 Intro clip (8–9s) — optional", type=["mp4", "mov", "webm"])
-        logo_up = st.file_uploader("📛 Logo (top-right — PNG or animated VIDEO/GIF) — optional",
-                                   type=["png", "jpg", "jpeg", "webp", "mp4", "mov", "webm", "gif"])
-        pillar_up = st.file_uploader("🎞️ Filler / pillar clip (~2s, plays BEFORE each section) — optional", type=["mp4", "mov", "webm"])
-    with c2:
-        st.markdown("<div class='sec'><span class='dot'></span>⚙️ Settings</div>", unsafe_allow_html=True)
-        red_text = st.text_input("🟥 Red strip text (Telugu, bottom-left)", "సిద్దిపేట జిల్లా వార్తలు")
-        bottom_text = st.text_input("📰 Scrolling ticker text (Telugu, NON-STOP)",
+    left, right = st.columns([1.55, 1], gap="large")
+    with left:
+        st.markdown("<div class='panel-title'><span class='pd'></span>📤 Upload Content</div>", unsafe_allow_html=True)
+        u1, u2 = st.columns(2, gap="large")
+        with u1:
+            main_ups = st.file_uploader("🎬 Main Video (Sections)  \n:gray[One long video or separate clips · required]",
+                                        type=["mp4", "mov", "webm"], accept_multiple_files=True)
+        with u2:
+            intro_up = st.file_uploader("🎥 Intro Clip (8–9s)  \n:gray[Optional · plays before each section]",
+                                        type=["mp4", "mov", "webm"])
+        u3, u4 = st.columns(2, gap="large")
+        with u3:
+            logo_up = st.file_uploader("🖼️ Logo / Watermark  \n:gray[Optional · PNG, JPG, WEBP or GIF]",
+                                       type=["png", "jpg", "jpeg", "webp", "mp4", "mov", "webm", "gif"])
+        with u4:
+            pillar_up = st.file_uploader("🎞️ Filler / Pillar Clip  \n:gray[Optional · ~2s, plays before each section]",
+                                         type=["mp4", "mov", "webm"])
+    with right:
+        st.markdown("<div class='panel-title'><span class='pd'></span>⚙️ Settings</div>", unsafe_allow_html=True)
+        red_text = st.text_input("🟥 Red Strip Text (Telugu, bottom-left)", "సిద్దిపేట జిల్లా వార్తలు")
+        bottom_text = st.text_input("📰 Scrolling Ticker Text (Telugu, NON-STOP)",
                                     "మున్సిపల్ పరిధిలో తాగునీటి సరఫరా మెరుగుదలకు ప్రత్యేక చర్యలు")
-        split_raw = st.text_input("⏱️ Section start times — EMPTY = auto-detect (or e.g. 0:49, 2:50, 4:28)",
+        split_raw = st.text_input("⏱️ Section Start Times — EMPTY = auto-detect",
                                   "", help="Leave empty and the tool auto-detects the big number cards (1–5) and inserts a filler before each. Only fill this in if auto-detect misses or gets a section wrong.")
-        st.caption("ℹ️ Empty = auto-detect · clean filler · slanted red strip · non-stop ticker · NotebookLM endcard auto-removed")
+        st.markdown("<div class='infocard'>ℹ️ <b>Empty = auto-detect</b> · clean filler · slanted red strip · "
+                    "non-stop ticker · NotebookLM endcard auto-removed</div>", unsafe_allow_html=True)
     section_titles = []
     split_times = _parse_times(split_raw)
 
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-    if st.button("🚀 Generate News Video", type="primary", use_container_width=True):
+    if st.button("✨  Generate News Video", type="primary", use_container_width=True):
         if not main_ups:
             st.error("⚠️ Please upload the main content video."); return
         def save(up, name):
@@ -580,6 +694,11 @@ def main():
                 st.download_button("⬇️  Download News Video", vf, "news_video.mp4", "video/mp4", use_container_width=True)
         except Exception as e:
             st.error("Render error: " + repr(e)); st.exception(e)
+
+    st.markdown("""<div class='footer'>
+      Powered by <b style='color:#EAECF5'>LocalAI TV</b> <span class='sep'>·</span> v2.0
+      <span class='sep'>·</span> <a>GitHub</a> <span class='sep'>·</span> <a>Documentation</a>
+    </div>""", unsafe_allow_html=True)
 
 
 if __name__ == "__main__":
