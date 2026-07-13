@@ -218,30 +218,52 @@ def _detect_sections(src, step=0.5):
         pytesseract.get_tesseract_version()
     except Exception:
         return []
+    def _ocr(im):
+        for psm in ("10", "8", "7", "13"):
+            t = re.sub(r"[^1-9]", "", pytesseract.image_to_string(
+                im, config="--psm %s -c tessedit_char_whitelist=123456789" % psm).strip())
+            if len(t) == 1:
+                return t
+        return ""
     def read_digit(fr):
         h, w, _ = fr.shape
         L = fr[int(.06 * h):int(.95 * h), 0:int(.26 * w)]                 # left strip where the giant digit sits
         g = cv2.cvtColor(L, cv2.COLOR_BGR2GRAY); s = cv2.cvtColor(L, cv2.COLOR_BGR2HSV)[:, :, 1]
-        white = ((g >= 232) & (s <= 50)).astype(np.uint8)                 # pure-white digit fill (pale/coloured bg excluded)
         Hh, Ww = L.shape[:2]
-        n, _lab, st, _c = cv2.connectedComponentsWithStats(white, 8)
-        if n <= 1:
-            return ""
-        x, y, ww, hh, area = st[1 + int(np.argmax(st[1:, cv2.CC_STAT_AREA]))]
-        if not (hh / Hh >= 0.5 and ww / Ww <= 0.80 and 0.16 <= area / (ww * hh + 1) <= 0.93):
-            return ""                                                     # cheap shape pre-filter: one tall, digit-like glyph
-        pad = 15; gc = g[max(0, y - pad):y + hh + pad, max(0, x - pad):x + ww + pad]
-        if gc.size == 0:
-            return ""
-        _, ot = cv2.threshold(gc, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        if ot.mean() < 127:
-            ot = 255 - ot                                                 # Tesseract wants a dark glyph on a light ground
-        ot = cv2.copyMakeBorder(ot, 40, 40, 40, 40, cv2.BORDER_CONSTANT, value=255)
-        for psm in ("10", "8", "7", "13"):
-            t = re.sub(r"[^1-9]", "", pytesseract.image_to_string(
-                ot, config="--psm %s -c tessedit_char_whitelist=123456789" % psm).strip())
-            if len(t) == 1:
-                return t
+        # Pass 1 = strict pure-white (excludes pale backgrounds). Pass 2 = looser + morphological CLOSE,
+        # which reconnects THIN strokes and recovers a digit that an emblem/shield is drawn across
+        # (e.g. Vijayanagaram's '2' with a police crest over it). Any NotebookLM number style is caught.
+        for thr, close in ((232, False), (212, True)):
+            white = ((g >= thr) & (s <= 60)).astype(np.uint8)
+            if close:
+                white = cv2.morphologyEx(white, cv2.MORPH_CLOSE, np.ones((7, 7), np.uint8))
+            n, lab, st, _c = cv2.connectedComponentsWithStats(white, 8)
+            if n <= 1:
+                continue
+            i = 1 + int(np.argmax(st[1:, cv2.CC_STAT_AREA])); x, y, ww, hh, area = st[i]
+            if not (hh / Hh >= 0.5 and ww / Ww <= 0.85 and 0.14 <= area / (ww * hh + 1) <= 0.95):
+                continue                                                   # one tall, digit-like glyph
+            comp = (lab == i).astype(np.uint8)
+            ring = cv2.dilate(comp, np.ones((5, 5), np.uint8)) - comp      # OUTLINE GATE: a real digit is hugged by a
+            rs = int(ring.sum())                                            # dark outline; content light-blobs are not,
+            if rs == 0 or int(((g <= 110) & (ring > 0)).sum()) / rs < 0.22: # so we skip OCR on them (fast + fewer FPs)
+                continue
+            pad = 15
+            # A: Otsu of the natural grayscale crop — best for clean digits ('1', etc.)
+            gc = g[max(0, y - pad):y + hh + pad, max(0, x - pad):x + ww + pad]
+            if gc.size:
+                _, ot = cv2.threshold(gc, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                if ot.mean() < 127:
+                    ot = 255 - ot                                         # Tesseract wants a dark glyph on a light ground
+                r = _ocr(cv2.copyMakeBorder(ot, 40, 40, 40, 40, cv2.BORDER_CONSTANT, value=255))
+                if r:
+                    return r
+            # B: the white glyph's SILHOUETTE — excludes an emblem/shield drawn inside the digit
+            cc = cv2.dilate(comp[max(0, y - pad):y + hh + pad, max(0, x - pad):x + ww + pad] * 255, np.ones((3, 3), np.uint8))
+            if cc.size:
+                r = _ocr(cv2.copyMakeBorder(255 - cc, 40, 40, 40, 40, cv2.BORDER_CONSTANT, value=255))
+                if r:
+                    return r
         return ""
     def count_boxes(fr):                          # the intro Table-of-Contents shows ONE white box per section
         h, w, _ = fr.shape; A = h * w
