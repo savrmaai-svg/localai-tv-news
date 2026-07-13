@@ -5,16 +5,20 @@
 # The video then scrolls ticker.png with an ffmpeg moving crop (smooth, no per-frame reshaping).
 import base64, os
 
-W = 1920
-STRIP_H = 86
-RED_W = 543
-SLANT = 46
-LABEL_W = RED_W + SLANT           # 589
+_S = 720 / 1080.0                 # 720p scale — MUST match news_app.py's _S (keep in sync)
+W = round(1920 * _S)
+STRIP_H = round(86 * _S)
+RED_W = round(543 * _S)
+SLANT = round(46 * _S)
+LABEL_W = RED_W + SLANT
 RED = "#B92F23"
 NAVY = "#06215B"
 STROKE = "#301A0A"
-LABEL_SIZE = 44
-TICK_SIZE = 56
+LABEL_SIZE = round(44 * _S)
+TICK_SIZE = round(56 * _S)
+LABEL_PAD = round(30 * _S)        # label left padding (scaled)
+LABEL_FIT = RED_W - round(44 * _S)  # auto-fit max text width (scaled)
+LABEL_MIN = round(22 * _S)        # min font size when shrinking (scaled)
 TICK_GAP = " " * 6      # wide gap between scrolling phrases (em-spaces, no bullet — matches reference)
 FONT_TTF = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts", "NotoSansTelugu-Bold.ttf")
 
@@ -63,14 +67,14 @@ def render_strip(ticker_text, label_text, D, repeats=8):
 *{{margin:0;padding:0;box-sizing:border-box}}html,body{{background:transparent}}
 #lab{{width:{LABEL_W}px;height:{STRIP_H}px;background:{RED};
  clip-path:polygon(0 0,{RED_W}px 0,{LABEL_W}px {STRIP_H}px,0 {STRIP_H}px);
- display:flex;align-items:center;padding-left:30px;overflow:hidden}}
+ display:flex;align-items:center;padding-left:{LABEL_PAD}px;overflow:hidden}}
 #lab span{{color:#fff;font-family:'NotoTel';font-weight:bold;font-size:{LABEL_SIZE}px;
  white-space:nowrap;-webkit-text-stroke:.5px {STROKE}}}</style>
 <div id="lab"><span>{_esc(label_text)}</span></div>"""
         pg.set_content(lbl_html); pg.wait_for_timeout(300)
         # auto-fit the label so it never overflows the red parallelogram (any district name fits)
         pg.eval_on_selector("#lab span", f"el => {{ let fs={LABEL_SIZE}; el.style.fontSize=fs+'px';"
-                            f" while(el.scrollWidth > {RED_W - 44} && fs>22){{ fs--; el.style.fontSize=fs+'px'; }} }}")
+                            f" while(el.scrollWidth > {LABEL_FIT} && fs>{LABEL_MIN}){{ fs--; el.style.fontSize=fs+'px'; }} }}")
         pg.wait_for_timeout(120)
         pg.locator("#lab").screenshot(path=label_png, omit_background=True)
 

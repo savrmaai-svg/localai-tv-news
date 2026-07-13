@@ -6,7 +6,8 @@
 import os, subprocess, tempfile, shutil
 import streamlit as st
 
-W, H, FPS = 1920, 1080, 25
+W, H, FPS = 1280, 720, 25          # 720p output (~2x faster render than 1080p)
+_S = H / 1080.0                    # scale factor: all overlay geometry derives from the 1080p design
 # ffmpeg/ffprobe: local Windows build if present, else system binaries (Linux/cloud via apt), else imageio fallback
 _WIN_FF = r"C:\Users\Sameer\Downloads\ffmpeg-8.0.1-essentials_build\ffmpeg-8.0.1-essentials_build\bin\ffmpeg.exe"
 if os.path.isfile(_WIN_FF):
@@ -55,9 +56,10 @@ NOTO_TTF = os.path.join(FONTS_DIR, "NotoSansTelugu-Bold.ttf")
 HEAD_FONT = "Noto Sans Telugu" if os.path.isfile(NOTO_TTF) else "Nirmala UI"
 # measured template geometry (from the reference khammam_20.mp4)
 RED = "0xB92F23"; BLUE = "0x06215B"
-STRIP_Y, STRIP_H = 994, 86        # raised so the strip covers NotebookLM's bottom-right watermark
-RED_W = 543
-LOGO_X, LOGO_Y, LOGO_W = 1560, 34, 330
+STRIP_H = round(86 * _S)          # bottom strip height (scaled)
+STRIP_Y = H - STRIP_H             # strip pinned to bottom (covers NotebookLM's watermark)
+RED_W = round(543 * _S)
+LOGO_W = round(330 * _S); LOGO_Y = round(34 * _S); LOGO_X = W - LOGO_W - round(30 * _S)
 
 
 def _esc(t):  # escape for ass text
@@ -73,10 +75,10 @@ def _dur(path):
     try: return float(r.stdout.strip())
     except Exception: return 0.0
 
-SLANT = 46                                            # red parallelogram slant (px) — matches reference
-TICK_X = RED_W + SLANT + 8                             # ticker starts just past the slanted red edge
-TICK_SIZE = 56                                         # ticker font size
-TICK_SPEED = 150                                       # ticker scroll px/sec
+SLANT = round(46 * _S)                                # red parallelogram slant (px, scaled)
+TICK_X = RED_W + SLANT + round(8 * _S)                 # ticker starts just past the slanted red edge
+TICK_SIZE = round(56 * _S)                             # ticker font size (scaled)
+TICK_SPEED = round(150 * _S)                           # ticker scroll px/sec (scaled)
 
 def _ticker_image(text, D):
     """Shape the ticker text ONCE (correct Telugu, no per-frame libass re-shaping) into a transparent
