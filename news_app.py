@@ -200,42 +200,63 @@ def _parse_times(s):
             pass
     return out
 
-def _detect_sections(src, step=0.6):
-    """Auto-find the NotebookLM 'big number' section cards (1..5). Each such card = a huge white
-    number with a thick black outline on a full-bleed COLOURED background. Robust signature:
-      left strip is coloured (not white), overall bg coloured, and the number's outline spans most
-      of the frame height (works even when an illustration partly covers the digit).
-    Returns the section START times (s). Empty list if cv2 missing or nothing found."""
+def _detect_sections(src, step=0.4):
+    """Auto-find the NotebookLM 'big number' section cards (1..5) and return each section's START
+    time (s). A real card = ONE giant white digit with a thick BLACK outline filling the upper-left
+    of the frame (section title to its right, pastel full-bleed background). We key on that digit's
+    EDGE STRUCTURE — a single TALL connected 'white-hugging-black' shape — which cleanly separates
+    the number cards from content slides (white speech bubbles, illustrations) and the table-of-
+    contents, all of which used to false-trigger the old heuristic. Two extra guards make it robust:
+      • the matching frames must PERSIST ≥~2.4s (a real card is held on screen; a 1-2 frame flicker
+        during a slide animation is ignored), and
+      • each start is REFINED backward to the card's exact first frame, so the section is cut right
+        at the card — no sliver of the previous slide flashes in after the 2s filler.
+    Returns [] if cv2 missing or nothing found."""
     try:
         import cv2, numpy as np
     except Exception:
         return []
     def is_card(fr):
         h, w, _ = fr.shape
-        lb = fr[int(.08 * h):int(.94 * h), int(.015 * w):int(.26 * w)]
-        g = cv2.cvtColor(lb, cv2.COLOR_BGR2GRAY); s = cv2.cvtColor(lb, cv2.COLOR_BGR2HSV)[:, :, 1]
-        Wm = ((g >= 195) & (s <= 80)).astype(np.uint8); Bm = (g <= 85).astype(np.uint8)
-        outline = cv2.dilate(Wm, np.ones((9, 9), np.uint8)) & Bm       # black hugging white = digit outline
-        rowspan = (outline.sum(1) > 2).mean(); colspan = (outline.sum(0) > 2).mean()
-        ledge = (fr[:, :int(.05 * w)] >= 232).all(axis=2).mean()
-        white = (fr >= 232).all(axis=2).mean()
-        return (ledge < 0.28) and (0.12 < white < 0.60) and (rowspan >= 0.58) and (colspan >= 0.50)
+        L = fr[int(.10 * h):int(.82 * h), int(.02 * w):int(.23 * w)]      # where the giant digit lives
+        g = cv2.cvtColor(L, cv2.COLOR_BGR2GRAY); s = cv2.cvtColor(L, cv2.COLOR_BGR2HSV)[:, :, 1]
+        white = ((g >= 185) & (s <= 95)).astype(np.uint8)                 # digit fill (bright, low-saturation)
+        black = (g <= 95).astype(np.uint8)                                # thick outline
+        edge = cv2.dilate(white, np.ones((5, 5), np.uint8)) & cv2.dilate(black, np.ones((5, 5), np.uint8))
+        if edge.mean() > 0.20:                                            # dense line-art (illustration) ≠ clean digit
+            return False
+        n, _lab, st, _c = cv2.connectedComponentsWithStats(edge, 8)
+        if n <= 1:
+            return False
+        _x, _y, _ww, hh, area = st[1 + int(np.argmax(st[1:, cv2.CC_STAT_AREA]))]
+        Hh, Ww = L.shape[:2]
+        return (hh / Hh >= 0.65) and (0.03 <= area / (Hh * Ww) <= 0.15)   # one tall outlined glyph = a number card
     cap = cv2.VideoCapture(src); fps = cap.get(cv2.CAP_PROP_FPS) or 25
     dur = (cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0) / fps
+    def card_at(t):
+        cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000); ok, fr = cap.read()
+        return bool(ok and is_card(fr))
     hits, t = [], 8.0
     while t < dur - 3:
-        cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000); ok, fr = cap.read()
-        if ok and is_card(fr):
-            hits.append(t)
+        if card_at(t):
+            hits.append(round(t, 1))
         t += step
-    cap.release()
     ev = []
     for hh in hits:
-        if ev and hh - ev[-1][-1] <= 2.5:
+        if ev and hh - ev[-1][-1] <= 2.0:
             ev[-1].append(hh)
         else:
             ev.append([hh])
-    return [round(max(0.0, c[0] - 0.6), 1) for c in ev if len(c) >= 4]   # ~0.6s before the card is fully in
+    starts = []
+    for c in ev:
+        if len(c) < 6:                            # card must stay on screen ≥~2.4s — ignore brief animation flickers
+            continue
+        onset = c[0]; tt = round(c[0] - 0.1, 2)   # walk back to the card's exact first frame (kills previous-slide flash)
+        while tt > c[0] - 1.0 and card_at(tt):
+            onset = tt; tt = round(tt - 0.1, 2)
+        starts.append(round(max(0.0, onset - 0.1), 1))
+    cap.release()
+    return starts
 
 def _split_at(src, times, D, end=None):
     """Cut the ONE long normalized video `src` into sections at the given start times (seconds).
