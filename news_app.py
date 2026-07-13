@@ -200,59 +200,71 @@ def _parse_times(s):
             pass
     return out
 
-def _detect_sections(src, step=0.4):
+def _detect_sections(src, step=0.5):
     """Auto-find the NotebookLM 'big number' section cards (1..5) and return each section's START
-    time (s). A real card = ONE giant white digit with a thick BLACK outline filling the upper-left
-    of the frame (section title to its right, pastel full-bleed background). We key on that digit's
-    EDGE STRUCTURE — a single TALL connected 'white-hugging-black' shape — which cleanly separates
-    the number cards from content slides (white speech bubbles, illustrations) and the table-of-
-    contents, all of which used to false-trigger the old heuristic. Two extra guards make it robust:
-      • the matching frames must PERSIST ≥~2.4s (a real card is held on screen; a 1-2 frame flicker
-        during a slide animation is ignored), and
-      • each start is REFINED backward to the card's exact first frame, so the section is cut right
-        at the card — no sliver of the previous slide flashes in after the 2s filler.
-    Returns [] if cv2 missing or nothing found."""
+    time (s). Instead of guessing from shapes (which confused content speech-bubbles, temples, and
+    big in-content numbers like '20'/'32' with real section cards), we now actually READ the number:
+    locate the giant white digit in the frame's left strip and OCR it with Tesseract — a frame counts
+    as a section card ONLY if that region reads as a SINGLE digit 1-9. This works across every
+    template (pale OR vivid backgrounds, Telugu OR English content) because centred content numbers
+    and title/date text never sit as a lone digit in the far-left strip. Guards:
+      • a real card must PERSIST ≥~2.5s (>=5 hits) — brief OCR misreads are dropped, and
+      • each start is refined to the card's onset so no previous slide flashes in after the 2s filler.
+    The exact digit VALUE doesn't matter (we only need the card's position); an occasional 1-vs-4
+    misread is harmless. Returns [] if OpenCV/Tesseract are unavailable or nothing is found — the app
+    then simply skips auto-fillers, and the user can type exact times in 'Section Start Times'."""
     try:
-        import cv2, numpy as np
+        import cv2, numpy as np, pytesseract, re
+        pytesseract.get_tesseract_version()
     except Exception:
         return []
-    def is_card(fr):
+    def read_digit(fr):
         h, w, _ = fr.shape
-        L = fr[int(.10 * h):int(.82 * h), int(.02 * w):int(.23 * w)]      # where the giant digit lives
+        L = fr[int(.06 * h):int(.95 * h), 0:int(.26 * w)]                 # left strip where the giant digit sits
         g = cv2.cvtColor(L, cv2.COLOR_BGR2GRAY); s = cv2.cvtColor(L, cv2.COLOR_BGR2HSV)[:, :, 1]
-        white = ((g >= 185) & (s <= 95)).astype(np.uint8)                 # digit fill (bright, low-saturation)
-        black = (g <= 95).astype(np.uint8)                                # thick outline
-        edge = cv2.dilate(white, np.ones((5, 5), np.uint8)) & cv2.dilate(black, np.ones((5, 5), np.uint8))
-        if edge.mean() > 0.20:                                            # dense line-art (illustration) ≠ clean digit
-            return False
-        n, _lab, st, _c = cv2.connectedComponentsWithStats(edge, 8)
-        if n <= 1:
-            return False
-        _x, _y, _ww, hh, area = st[1 + int(np.argmax(st[1:, cv2.CC_STAT_AREA]))]
+        white = ((g >= 232) & (s <= 50)).astype(np.uint8)                 # pure-white digit fill (pale/coloured bg excluded)
         Hh, Ww = L.shape[:2]
-        return (hh / Hh >= 0.65) and (0.03 <= area / (Hh * Ww) <= 0.15)   # one tall outlined glyph = a number card
+        n, _lab, st, _c = cv2.connectedComponentsWithStats(white, 8)
+        if n <= 1:
+            return ""
+        x, y, ww, hh, area = st[1 + int(np.argmax(st[1:, cv2.CC_STAT_AREA]))]
+        if not (hh / Hh >= 0.5 and ww / Ww <= 0.80 and 0.16 <= area / (ww * hh + 1) <= 0.93):
+            return ""                                                     # cheap shape pre-filter: one tall, digit-like glyph
+        pad = 15; gc = g[max(0, y - pad):y + hh + pad, max(0, x - pad):x + ww + pad]
+        if gc.size == 0:
+            return ""
+        _, ot = cv2.threshold(gc, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        if ot.mean() < 127:
+            ot = 255 - ot                                                 # Tesseract wants a dark glyph on a light ground
+        ot = cv2.copyMakeBorder(ot, 40, 40, 40, 40, cv2.BORDER_CONSTANT, value=255)
+        for psm in ("10", "8", "7", "13"):
+            t = re.sub(r"[^1-9]", "", pytesseract.image_to_string(
+                ot, config="--psm %s -c tessedit_char_whitelist=123456789" % psm).strip())
+            if len(t) == 1:
+                return t
+        return ""
     cap = cv2.VideoCapture(src); fps = cap.get(cv2.CAP_PROP_FPS) or 25
     dur = (cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0) / fps
-    def card_at(t):
+    def digit_at(t):
         cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000); ok, fr = cap.read()
-        return bool(ok and is_card(fr))
-    hits, t = [], 8.0
-    while t < dur - 3:
-        if card_at(t):
+        return read_digit(fr) if ok else ""
+    hits, t = [], 6.0
+    while t < dur - 2:
+        if digit_at(t):
             hits.append(round(t, 1))
         t += step
     ev = []
-    for hh in hits:
-        if ev and hh - ev[-1][-1] <= 2.0:
-            ev[-1].append(hh)
+    for tt in hits:
+        if ev and tt - ev[-1][-1] <= 2.0:
+            ev[-1].append(tt)
         else:
-            ev.append([hh])
+            ev.append([tt])
     starts = []
     for c in ev:
-        if len(c) < 6:                            # card must stay on screen ≥~2.4s — ignore brief animation flickers
+        if len(c) < 5:                            # a real section card is held ≥~2.5s — ignore brief misreads
             continue
-        onset = c[0]; tt = round(c[0] - 0.1, 2)   # walk back to the card's exact first frame (kills previous-slide flash)
-        while tt > c[0] - 1.0 and card_at(tt):
+        onset = c[0]; tt = round(c[0] - 0.1, 2)   # refine back to the card's first frame (kills previous-slide flash)
+        while tt > c[0] - 1.0 and digit_at(tt):
             onset = tt; tt = round(tt - 0.1, 2)
         starts.append(round(max(0.0, onset - 0.1), 1))
     cap.release()
