@@ -243,11 +243,34 @@ def _detect_sections(src, step=0.5):
             if len(t) == 1:
                 return t
         return ""
+    def count_boxes(fr):                          # the intro Table-of-Contents shows ONE white box per section
+        h, w, _ = fr.shape; A = h * w
+        g = cv2.cvtColor(fr, cv2.COLOR_BGR2GRAY)
+        white = cv2.morphologyEx((g >= 205).astype(np.uint8), cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
+        n, _l, st, _c = cv2.connectedComponentsWithStats(white, 8)
+        b = 0
+        for i in range(1, n):
+            _x, _y, ww, hh, area = st[i]
+            if 0.03 * A <= area <= 0.16 * A and ww > 0.15 * w and hh > 0.12 * h \
+               and 0.6 <= ww / hh <= 3.0 and area / (ww * hh) > 0.75:      # a big, filled, ~rectangular white card
+                b += 1
+        return b
     cap = cv2.VideoCapture(src); fps = cap.get(cv2.CAP_PROP_FPS) or 25
     dur = (cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0) / fps
-    def digit_at(t):
+    def frame_at(t):
         cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000); ok, fr = cap.read()
-        return read_digit(fr) if ok else ""
+        return fr if ok else None
+    # ANCHOR: the intro TOC grid tells us HOW MANY sections to expect — count its numbered boxes
+    n_expected, t = 0, 8.0
+    while t < min(dur - 2, 120):
+        fr = frame_at(t)
+        if fr is not None:
+            n_expected = max(n_expected, count_boxes(fr))
+        t += 1.0
+    n_expected = n_expected if 2 <= n_expected <= 8 else 0     # only trust a sane count
+    def digit_at(t):
+        fr = frame_at(t)
+        return read_digit(fr) if fr is not None else ""
     hits, t = [], 6.0
     while t < dur - 2:
         if digit_at(t):
@@ -259,11 +282,13 @@ def _detect_sections(src, step=0.5):
             ev[-1].append(tt)
         else:
             ev.append([tt])
+    valid = [c for c in ev if len(c) >= 5]                     # a real section card is held ≥~2.5s
+    if n_expected and len(valid) > n_expected:                # more matches than the TOC says -> keep the most-persistent N
+        valid = sorted(valid, key=len, reverse=True)[:n_expected]
+    valid.sort(key=lambda c: c[0])
     starts = []
-    for c in ev:
-        if len(c) < 5:                            # a real section card is held ≥~2.5s — ignore brief misreads
-            continue
-        onset = c[0]; tt = round(c[0] - 0.1, 2)   # refine back to the card's first frame (kills previous-slide flash)
+    for c in valid:
+        onset = c[0]; tt = round(c[0] - 0.1, 2)               # refine back to the card's first frame (kills previous-slide flash)
         while tt > c[0] - 1.0 and digit_at(tt):
             onset = tt; tt = round(tt - 0.1, 2)
         starts.append(round(max(0.0, onset - 0.1), 1))
