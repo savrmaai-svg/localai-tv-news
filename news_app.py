@@ -149,7 +149,7 @@ def _normalize(src, out):
         cmd += ["-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo", "-shortest"]
     cmd += ["-vf", f"scale={W}:{H}:force_original_aspect_ratio=decrease,"
                    f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=black,fps={FPS},setsar=1",
-            "-r", str(FPS), "-c:v", "libx264", "-preset", "fast", "-crf", "20", "-pix_fmt", "yuv420p",
+            "-r", str(FPS), "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-b:a", "160k", "-ar", "44100", "-ac", "2", out]
     subprocess.run(cmd, check=True)
 
@@ -179,7 +179,7 @@ def _endcard_start(src):
 
 def _trim_to(src, end, out):
     subprocess.run([FF, "-y", "-v", "error", "-i", src, "-t", f"{end:.3f}",
-                    "-c:v", "libx264", "-preset", "fast", "-crf", "20", "-pix_fmt", "yuv420p",
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
                     "-c:a", "aac", "-b:a", "160k", "-ar", "44100", "-ac", "2", out], check=True)
     return out
 
@@ -248,7 +248,7 @@ def _split_at(src, times, D, end=None):
         seg = os.path.join(D, f"seg{i}.mp4")
         # -ss BEFORE -i = fast AND frame-accurate (decodes only from the preceding keyframe)
         subprocess.run([FF, "-y", "-v", "error", "-ss", f"{s:.3f}", "-i", src, "-t", f"{e - s:.3f}",
-                        "-c:v", "libx264", "-preset", "fast", "-crf", "20", "-pix_fmt", "yuv420p",
+                        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
                         "-c:a", "aac", "-b:a", "160k", "-ar", "44100", "-ac", "2", seg], check=True)
         segs.append(seg)
     return segs
@@ -257,7 +257,7 @@ def _concat(paths, out):
     lst = out + ".txt"
     open(lst, "w").write("\n".join(f"file '{p.replace(chr(92), '/')}'" for p in paths))
     subprocess.run([FF, "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", lst,
-                    "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
                     "-c:a", "aac", "-b:a", "160k", "-ar", "44100", "-ac", "2", out], check=True)
     return out
 
@@ -378,7 +378,7 @@ def render(main_clips, intro, logo, red_text, bottom_text, section_titles, out_p
     fc += (f"[{cur}]subtitles={os.path.basename(ass)}:fontsdir=.[v]" if ass else f"[{cur}]null[v]")
     content = os.path.join(D, "content.mp4")
     subprocess.run([FF, "-y", "-v", "error"] + inputs + ["-filter_complex", fc, "-map", "[v]", "-map", "0:a?",
-                    "-r", str(FPS), "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",
+                    "-r", str(FPS), "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
                     "-c:a", "aac", "-b:a", "160k", "-ar", "44100", "-ac", "2"] + extra + [content],
                    check=True, cwd=D)
 
