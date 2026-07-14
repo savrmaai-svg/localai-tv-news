@@ -667,18 +667,26 @@ h1,h2,h3,h4,h5,p,label,span,li,.stMarkdown{ color:var(--txt); }
 [data-baseweb="input"],[data-baseweb="base-input"]{ background:transparent!important; border-radius:14px!important; }
 
 /* ---------- premium dropdowns (selectbox + its menu) ---------- */
-[data-baseweb="select"] > div{ background:rgba(255,255,255,.04)!important; border:1px solid var(--bd)!important;
-  border-radius:14px!important; min-height:48px; transition:.2s; }
-[data-baseweb="select"] > div:hover{ border-color:rgba(124,58,237,.55)!important; }
-[data-baseweb="select"] > div:focus-within{ border-color:var(--purple)!important; box-shadow:0 0 0 3px rgba(124,58,237,.25)!important; }
-[data-baseweb="select"] input,[data-baseweb="select"] div[title]{ color:#fff!important; font-weight:600; }
-[data-baseweb="popover"] ul[role="listbox"]{ background:#0E172B!important; border:1px solid var(--bd2)!important;
-  border-radius:16px!important; padding:6px!important; box-shadow:0 24px 60px rgba(0,0,0,.55)!important; }
-[data-baseweb="popover"] li[role="option"]{ border-radius:11px!important; margin:2px 4px!important; padding:11px 13px!important;
-  color:#E6EAF8!important; font-weight:600; font-size:.93rem; transition:.15s; }
-[data-baseweb="popover"] li[role="option"]:hover{ background:rgba(124,58,237,.22)!important; transform:translateX(2px); }
+[data-baseweb="select"] > div{ background:rgba(255,255,255,.04)!important; border:1.5px solid rgba(124,58,237,.45)!important;
+  border-radius:15px!important; min-height:52px; transition:.2s; }
+[data-baseweb="select"] > div:hover{ border-color:rgba(236,72,153,.6)!important; box-shadow:0 6px 20px rgba(124,58,237,.2)!important; }
+[data-baseweb="select"] > div:focus-within{ border-color:var(--purple)!important; box-shadow:0 0 0 3px rgba(124,58,237,.28)!important; }
+[data-baseweb="select"] input,[data-baseweb="select"] div[title]{ color:#fff!important; font-weight:700; font-size:.96rem; }
+[data-baseweb="select"] svg{ fill:var(--pink)!important; }
+/* the open menu = floating glass card with a coloured edge */
+[data-baseweb="popover"] ul[role="listbox"]{ background:linear-gradient(180deg,#131d38,#0b1122)!important;
+  border:1px solid rgba(124,58,237,.4)!important; border-radius:20px!important; padding:8px!important;
+  box-shadow:0 30px 72px rgba(0,0,0,.62), 0 0 22px rgba(124,58,237,.25)!important; }
+[data-baseweb="popover"] li[role="option"]{ border-radius:13px!important; margin:3px 5px!important; padding:13px 15px!important;
+  color:#E9EDFB!important; font-weight:600; font-size:.96rem; transition:.16s; }
+[data-baseweb="popover"] li[role="option"]:hover{ background:rgba(124,58,237,.26)!important; transform:translateX(3px); }
+/* selected / keyboard-highlighted row -> vibrant full gradient (like the mock) */
 [data-baseweb="popover"] li[role="option"][aria-selected="true"]{
-  background:linear-gradient(90deg,var(--purple),var(--pink))!important; color:#fff!important; box-shadow:0 6px 18px rgba(124,58,237,.35); }
+  background:linear-gradient(90deg,var(--blue),var(--purple) 55%,var(--pink))!important; color:#fff!important; font-weight:700;
+  box-shadow:0 8px 22px rgba(124,58,237,.45)!important; }
+[data-baseweb="popover"] ul[role="listbox"]::-webkit-scrollbar{ width:8px; }
+[data-baseweb="popover"] ul[role="listbox"]::-webkit-scrollbar-thumb{ background:linear-gradient(var(--pink),var(--purple)); border-radius:8px; }
+[data-baseweb="popover"] ul[role="listbox"]::-webkit-scrollbar-track{ background:transparent; }
 
 /* ---------- info card ---------- */
 .infocard{ background:linear-gradient(120deg,rgba(56,189,248,.12),rgba(124,58,237,.10)); border:1px solid var(--bd2);
@@ -841,7 +849,7 @@ def main():
         with u4:
             pillar_up = st.file_uploader("🎞️ Filler / Pillar Clip  \n:gray[Optional · ~2s, plays before each section]",
                                          type=["mp4", "mov", "webm"])
-            _fillers = _list_media("fillers", VID_EXTS, "🎞️")
+            _fillers = _list_media("fillers", VID_EXTS, "📢")
             pillar_pick = st.selectbox("🎞️ …or pick a saved filler", ["— none —"] + list(_fillers.keys()),
                                        help="Bundled fillers. An uploaded file above overrides this.") if _fillers else None
             if pillar_pick and pillar_pick in _fillers:
