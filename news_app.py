@@ -793,6 +793,9 @@ def main():
             _intros = _list_media("intros", VID_EXTS)
             intro_pick = st.selectbox("🎬 …or pick a saved intro", ["— none —"] + list(_intros.keys()),
                                       help="Bundled intros by category. An uploaded file above overrides this.") if _intros else None
+            if intro_pick and intro_pick in _intros:
+                st.caption("✅ Preview — verify this is the right one:")
+                st.video(open(_intros[intro_pick], "rb").read())
         u3, u4 = st.columns(2, gap="large")
         with u3:
             logo_up = st.file_uploader("🖼️ Logo / Watermark  \n:gray[Optional · PNG, JPG, WEBP or GIF]",
@@ -800,12 +803,22 @@ def main():
             _logos = _list_media("logos", LOGO_EXTS)
             logo_pick = st.selectbox("🖼️ …or pick a saved logo", ["— none —"] + list(_logos.keys()),
                                      help="Bundled logos. An uploaded file above overrides this.") if _logos else None
+            if logo_pick and logo_pick in _logos:
+                st.caption("✅ Preview — verify this is the right one:")
+                _lp = _logos[logo_pick]
+                if _lp.lower().endswith((".mp4", ".mov", ".webm")):
+                    st.video(open(_lp, "rb").read())
+                else:
+                    st.image(_lp, use_container_width=True)
         with u4:
             pillar_up = st.file_uploader("🎞️ Filler / Pillar Clip  \n:gray[Optional · ~2s, plays before each section]",
                                          type=["mp4", "mov", "webm"])
             _fillers = _list_media("fillers", VID_EXTS)
             pillar_pick = st.selectbox("🎞️ …or pick a saved filler", ["— none —"] + list(_fillers.keys()),
                                        help="Bundled fillers. An uploaded file above overrides this.") if _fillers else None
+            if pillar_pick and pillar_pick in _fillers:
+                st.caption("✅ Preview — verify this is the right one:")
+                st.video(open(_fillers[pillar_pick], "rb").read())
     with right:
         st.markdown("<div class='panel-title'><span class='pd'></span>⚙️ Settings</div>", unsafe_allow_html=True)
         red_text = st.text_input("🟥 Red Strip Text (Telugu, bottom-left)", "సిద్దిపేట జిల్లా వార్తలు")
