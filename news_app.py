@@ -52,21 +52,25 @@ def _ensure_chromium(log=lambda *_a: None):
 NIRMALA = r"C:\Windows\Fonts\Nirmala.ttf"
 FONTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
 NOTO_TTF = os.path.join(FONTS_DIR, "NotoSansTelugu-Bold.ttf")
-INTROS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "intros")
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+VID_EXTS = (".mp4", ".mov", ".webm")
+LOGO_EXTS = VID_EXTS + (".gif", ".png", ".jpg", ".jpeg", ".webp")
 
 
-def _list_intros():
-    """Saved intro clips bundled under intros/<category>/*.mp4 -> {label: path}. Empty dict if none."""
+def _list_media(subdir, exts):
+    """Saved clips under <app>/<subdir>/ — flat files OR one level of category subfolders. {label: path}."""
+    base = os.path.join(APP_DIR, subdir)
     out = {}
-    if not os.path.isdir(INTROS_DIR):
+    if not os.path.isdir(base):
         return out
-    for cat in sorted(os.listdir(INTROS_DIR)):
-        cdir = os.path.join(INTROS_DIR, cat)
-        if not os.path.isdir(cdir):
-            continue
-        for f in sorted(os.listdir(cdir)):
-            if f.lower().endswith((".mp4", ".mov", ".webm")):
-                out[f"{cat} · {os.path.splitext(f)[0]}"] = os.path.join(cdir, f)
+    for entry in sorted(os.listdir(base)):
+        p = os.path.join(base, entry)
+        if os.path.isdir(p):                                        # a category subfolder (e.g. intros/district/)
+            for f in sorted(os.listdir(p)):
+                if f.lower().endswith(exts):
+                    out[f"{entry} · {os.path.splitext(f)[0]}"] = os.path.join(p, f)
+        elif entry.lower().endswith(exts):                          # a flat file (e.g. fillers/guntur.mp4)
+            out[os.path.splitext(entry)[0]] = p
     return out
 # Noto Sans Telugu shapes Telugu correctly; Nirmala-Bold dropped 'ా' vowel signs, Ramabhadra broke conjuncts
 HEAD_FONT = "Noto Sans Telugu" if os.path.isfile(NOTO_TTF) else "Nirmala UI"
@@ -786,16 +790,22 @@ def main():
         with u2:
             intro_up = st.file_uploader("🎥 Intro Clip (8–9s)  \n:gray[Optional · plays before each section]",
                                         type=["mp4", "mov", "webm"])
-            _intros = _list_intros()
+            _intros = _list_media("intros", VID_EXTS)
             intro_pick = st.selectbox("🎬 …or pick a saved intro", ["— none —"] + list(_intros.keys()),
                                       help="Bundled intros by category. An uploaded file above overrides this.") if _intros else None
         u3, u4 = st.columns(2, gap="large")
         with u3:
             logo_up = st.file_uploader("🖼️ Logo / Watermark  \n:gray[Optional · PNG, JPG, WEBP or GIF]",
                                        type=["png", "jpg", "jpeg", "webp", "mp4", "mov", "webm", "gif"])
+            _logos = _list_media("logos", LOGO_EXTS)
+            logo_pick = st.selectbox("🖼️ …or pick a saved logo", ["— none —"] + list(_logos.keys()),
+                                     help="Bundled logos. An uploaded file above overrides this.") if _logos else None
         with u4:
             pillar_up = st.file_uploader("🎞️ Filler / Pillar Clip  \n:gray[Optional · ~2s, plays before each section]",
                                          type=["mp4", "mov", "webm"])
+            _fillers = _list_media("fillers", VID_EXTS)
+            pillar_pick = st.selectbox("🎞️ …or pick a saved filler", ["— none —"] + list(_fillers.keys()),
+                                       help="Bundled fillers. An uploaded file above overrides this.") if _fillers else None
     with right:
         st.markdown("<div class='panel-title'><span class='pd'></span>⚙️ Settings</div>", unsafe_allow_html=True)
         red_text = st.text_input("🟥 Red Strip Text (Telugu, bottom-left)", "సిద్దిపేట జిల్లా వార్తలు")
@@ -820,6 +830,10 @@ def main():
         intro = save(intro_up, "intro"); logo = save(logo_up, "logo"); pillar = save(pillar_up, "pillar")
         if not intro and intro_pick and intro_pick in _intros:      # no upload -> use the chosen saved intro
             intro = _intros[intro_pick]
+        if not logo and logo_pick and logo_pick in _logos:
+            logo = _logos[logo_pick]
+        if not pillar and pillar_pick and pillar_pick in _fillers:
+            pillar = _fillers[pillar_pick]
         if len(clips) == 1 and split_times:
             st.info(f"The video will be cut into {len(split_times)+1} sections, with a filler before each.")
         out = os.path.join(D, "news_out.mp4"); box = st.empty(); logs = []
