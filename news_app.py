@@ -52,6 +52,22 @@ def _ensure_chromium(log=lambda *_a: None):
 NIRMALA = r"C:\Windows\Fonts\Nirmala.ttf"
 FONTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
 NOTO_TTF = os.path.join(FONTS_DIR, "NotoSansTelugu-Bold.ttf")
+INTROS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "intros")
+
+
+def _list_intros():
+    """Saved intro clips bundled under intros/<category>/*.mp4 -> {label: path}. Empty dict if none."""
+    out = {}
+    if not os.path.isdir(INTROS_DIR):
+        return out
+    for cat in sorted(os.listdir(INTROS_DIR)):
+        cdir = os.path.join(INTROS_DIR, cat)
+        if not os.path.isdir(cdir):
+            continue
+        for f in sorted(os.listdir(cdir)):
+            if f.lower().endswith((".mp4", ".mov", ".webm")):
+                out[f"{cat} · {os.path.splitext(f)[0]}"] = os.path.join(cdir, f)
+    return out
 # Noto Sans Telugu shapes Telugu correctly; Nirmala-Bold dropped 'ా' vowel signs, Ramabhadra broke conjuncts
 HEAD_FONT = "Noto Sans Telugu" if os.path.isfile(NOTO_TTF) else "Nirmala UI"
 # measured template geometry (from the reference khammam_20.mp4)
@@ -770,6 +786,9 @@ def main():
         with u2:
             intro_up = st.file_uploader("🎥 Intro Clip (8–9s)  \n:gray[Optional · plays before each section]",
                                         type=["mp4", "mov", "webm"])
+            _intros = _list_intros()
+            intro_pick = st.selectbox("🎬 …or pick a saved intro", ["— none —"] + list(_intros.keys()),
+                                      help="Bundled intros by category. An uploaded file above overrides this.") if _intros else None
         u3, u4 = st.columns(2, gap="large")
         with u3:
             logo_up = st.file_uploader("🖼️ Logo / Watermark  \n:gray[Optional · PNG, JPG, WEBP or GIF]",
@@ -799,6 +818,8 @@ def main():
             open(p, "wb").write(up.getbuffer()); return p
         clips = [save(u, f"main{i}") for i, u in enumerate(main_ups)]
         intro = save(intro_up, "intro"); logo = save(logo_up, "logo"); pillar = save(pillar_up, "pillar")
+        if not intro and intro_pick and intro_pick in _intros:      # no upload -> use the chosen saved intro
+            intro = _intros[intro_pick]
         if len(clips) == 1 and split_times:
             st.info(f"The video will be cut into {len(split_times)+1} sections, with a filler before each.")
         out = os.path.join(D, "news_out.mp4"); box = st.empty(); logs = []
