@@ -57,8 +57,11 @@ VID_EXTS = (".mp4", ".mov", ".webm")
 LOGO_EXTS = VID_EXTS + (".gif", ".png", ".jpg", ".jpeg", ".webp")
 
 
-def _list_media(subdir, exts):
-    """Saved clips under <app>/<subdir>/ — flat files OR one level of category subfolders. {label: path}."""
+_CAT_ICON = {"district": "📍", "local": "🏙️", "national_state": "🏛️"}
+
+
+def _list_media(subdir, exts, icon="🎬"):
+    """Saved clips under <app>/<subdir>/ — flat files OR one level of category subfolders. {icon+label: path}."""
     base = os.path.join(APP_DIR, subdir)
     out = {}
     if not os.path.isdir(base):
@@ -66,11 +69,12 @@ def _list_media(subdir, exts):
     for entry in sorted(os.listdir(base)):
         p = os.path.join(base, entry)
         if os.path.isdir(p):                                        # a category subfolder (e.g. intros/district/)
+            ci = _CAT_ICON.get(entry.lower(), icon)
             for f in sorted(os.listdir(p)):
                 if f.lower().endswith(exts):
-                    out[f"{entry} · {os.path.splitext(f)[0]}"] = os.path.join(p, f)
+                    out[f"{ci} {os.path.splitext(f)[0]}"] = os.path.join(p, f)
         elif entry.lower().endswith(exts):                          # a flat file (e.g. fillers/guntur.mp4)
-            out[os.path.splitext(entry)[0]] = p
+            out[f"{icon} {os.path.splitext(entry)[0]}"] = p
     return out
 # Noto Sans Telugu shapes Telugu correctly; Nirmala-Bold dropped 'ా' vowel signs, Ramabhadra broke conjuncts
 HEAD_FONT = "Noto Sans Telugu" if os.path.isfile(NOTO_TTF) else "Nirmala UI"
@@ -611,7 +615,9 @@ h1,h2,h3,h4,h5,p,label,span,li,.stMarkdown{ color:var(--txt); }
 .hb{ display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border-radius:999px; font-size:.81rem; font-weight:600;
   background:rgba(255,255,255,.06); border:1px solid var(--bd2); color:#E6EAF8; backdrop-filter:blur(6px); transition:.2s; }
 .hb:hover{ transform:translateY(-2px); border-color:rgba(236,72,153,.5); }
-.hero-visual{ width:210px; height:132px; position:relative; z-index:1; flex-shrink:0; }
+.hero-visual{ width:300px; height:170px; position:relative; z-index:1; flex-shrink:0; }
+.hero-vid{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; border-radius:16px;
+  border:1px solid var(--bd2); box-shadow:0 18px 46px rgba(56,189,248,.3); background:#000; }
 .monitor{ position:absolute; inset:0; border-radius:16px; display:grid; place-items:center;
   background:linear-gradient(135deg,var(--purple),var(--pink) 58%,var(--orange)); box-shadow:0 20px 50px rgba(236,72,153,.4); }
 .monitor::after{ content:"\\25B6"; color:#fff; font-size:2.2rem; margin-left:6px; text-shadow:0 4px 14px rgba(0,0,0,.35); }
@@ -659,6 +665,20 @@ h1,h2,h3,h4,h5,p,label,span,li,.stMarkdown{ color:var(--txt); }
 .stTextInput input:focus,.stTextArea textarea:focus{ border-color:var(--purple)!important;
   box-shadow:0 0 0 3px rgba(124,58,237,.28)!important; }
 [data-baseweb="input"],[data-baseweb="base-input"]{ background:transparent!important; border-radius:14px!important; }
+
+/* ---------- premium dropdowns (selectbox + its menu) ---------- */
+[data-baseweb="select"] > div{ background:rgba(255,255,255,.04)!important; border:1px solid var(--bd)!important;
+  border-radius:14px!important; min-height:48px; transition:.2s; }
+[data-baseweb="select"] > div:hover{ border-color:rgba(124,58,237,.55)!important; }
+[data-baseweb="select"] > div:focus-within{ border-color:var(--purple)!important; box-shadow:0 0 0 3px rgba(124,58,237,.25)!important; }
+[data-baseweb="select"] input,[data-baseweb="select"] div[title]{ color:#fff!important; font-weight:600; }
+[data-baseweb="popover"] ul[role="listbox"]{ background:#0E172B!important; border:1px solid var(--bd2)!important;
+  border-radius:16px!important; padding:6px!important; box-shadow:0 24px 60px rgba(0,0,0,.55)!important; }
+[data-baseweb="popover"] li[role="option"]{ border-radius:11px!important; margin:2px 4px!important; padding:11px 13px!important;
+  color:#E6EAF8!important; font-weight:600; font-size:.93rem; transition:.15s; }
+[data-baseweb="popover"] li[role="option"]:hover{ background:rgba(124,58,237,.22)!important; transform:translateX(2px); }
+[data-baseweb="popover"] li[role="option"][aria-selected="true"]{
+  background:linear-gradient(90deg,var(--purple),var(--pink))!important; color:#fff!important; box-shadow:0 6px 18px rgba(124,58,237,.35); }
 
 /* ---------- info card ---------- */
 .infocard{ background:linear-gradient(120deg,rgba(56,189,248,.12),rgba(124,58,237,.10)); border:1px solid var(--bd2);
@@ -750,7 +770,15 @@ def main():
             st.json(_info)
 
     # ---- hero ----
-    st.markdown("""
+    _hp = os.path.join(APP_DIR, "assets", "hero.mp4")
+    if os.path.isfile(_hp):
+        import base64
+        _b64 = base64.b64encode(open(_hp, "rb").read()).decode()
+        _hero_visual = ("<video class='hero-vid' autoplay loop muted playsinline "
+                        "src='data:video/mp4;base64,%s'></video>" % _b64)
+    else:
+        _hero_visual = "<div class='monitor'></div>"
+    st.markdown(f"""
     <div class='hero'>
       <div class='hero-left'>
         <h1>LocalAI TV <span>Studio</span></h1>
@@ -763,7 +791,7 @@ def main():
           <span class='hb'>⚡ Fast Rendering</span>
         </div>
       </div>
-      <div class='hero-visual'><div class='monitor'></div></div>
+      <div class='hero-visual'>{_hero_visual}</div>
     </div>
     <div class='stats'>
       <div class='stat'><div class='stat-ic si-purple'>🎬</div>
@@ -800,7 +828,7 @@ def main():
         with u3:
             logo_up = st.file_uploader("🖼️ Logo / Watermark  \n:gray[Optional · PNG, JPG, WEBP or GIF]",
                                        type=["png", "jpg", "jpeg", "webp", "mp4", "mov", "webm", "gif"])
-            _logos = _list_media("logos", LOGO_EXTS)
+            _logos = _list_media("logos", LOGO_EXTS, "🖼️")
             logo_pick = st.selectbox("🖼️ …or pick a saved logo", ["— none —"] + list(_logos.keys()),
                                      help="Bundled logos. An uploaded file above overrides this.") if _logos else None
             if logo_pick and logo_pick in _logos:
@@ -813,7 +841,7 @@ def main():
         with u4:
             pillar_up = st.file_uploader("🎞️ Filler / Pillar Clip  \n:gray[Optional · ~2s, plays before each section]",
                                          type=["mp4", "mov", "webm"])
-            _fillers = _list_media("fillers", VID_EXTS)
+            _fillers = _list_media("fillers", VID_EXTS, "🎞️")
             pillar_pick = st.selectbox("🎞️ …or pick a saved filler", ["— none —"] + list(_fillers.keys()),
                                        help="Bundled fillers. An uploaded file above overrides this.") if _fillers else None
             if pillar_pick and pillar_pick in _fillers:

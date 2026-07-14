@@ -16,3 +16,7 @@ cine_*/
 intros/
 fillers/
 logos/
+
+# keep the hero intro clip
+!assets/
+!assets/hero.mp4
