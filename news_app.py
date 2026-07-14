@@ -225,14 +225,34 @@ def _detect_sections(src, step=0.5):
             if len(t) == 1:
                 return t
         return ""
-    def read_digit(fr):
+    def _try(g, comp, x, y, ww, hh):
+        """OCR the digit from its bounding box — Otsu of the natural crop first (best for clean digits),
+        then (if a fill component is given) its dark SILHOUETTE, which excludes an emblem drawn inside it."""
+        pad = 15
+        gc = g[max(0, y - pad):y + hh + pad, max(0, x - pad):x + ww + pad]
+        if gc.size:
+            _, ot = cv2.threshold(gc, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            if ot.mean() < 127:
+                ot = 255 - ot                                             # Tesseract wants a dark glyph on a light ground
+            r = _ocr(cv2.copyMakeBorder(ot, 40, 40, 40, 40, cv2.BORDER_CONSTANT, value=255))
+            if r:
+                return r
+        if comp is not None:
+            cc = cv2.dilate(comp[max(0, y - pad):y + hh + pad, max(0, x - pad):x + ww + pad] * 255, np.ones((3, 3), np.uint8))
+            if cc.size:
+                r = _ocr(cv2.copyMakeBorder(255 - cc, 40, 40, 40, 40, cv2.BORDER_CONSTANT, value=255))
+                if r:
+                    return r
+        return ""
+    def white_digit(fr):
+        """Method A — isolate the digit by its WHITE FILL (best on vivid/coloured backgrounds). Strict
+        pure-white pass, then a looser pass + morphological CLOSE that recovers a digit an emblem/shield is
+        drawn across (e.g. Vijayanagaram's '2' with a police crest). An OUTLINE GATE (the glyph must be
+        hugged by a dark outline) skips content light-blobs. Returns the OCR'd digit or ''."""
         h, w, _ = fr.shape
         L = fr[int(.06 * h):int(.95 * h), 0:int(.26 * w)]                 # left strip where the giant digit sits
         g = cv2.cvtColor(L, cv2.COLOR_BGR2GRAY); s = cv2.cvtColor(L, cv2.COLOR_BGR2HSV)[:, :, 1]
         Hh, Ww = L.shape[:2]
-        # Pass 1 = strict pure-white (excludes pale backgrounds). Pass 2 = looser + morphological CLOSE,
-        # which reconnects THIN strokes and recovers a digit that an emblem/shield is drawn across
-        # (e.g. Vijayanagaram's '2' with a police crest over it). Any NotebookLM number style is caught.
         for thr, close in ((232, False), (212, True)):
             white = ((g >= thr) & (s <= 60)).astype(np.uint8)
             if close:
@@ -245,26 +265,28 @@ def _detect_sections(src, step=0.5):
                 continue                                                   # one tall, digit-like glyph
             comp = (lab == i).astype(np.uint8)
             ring = cv2.dilate(comp, np.ones((5, 5), np.uint8)) - comp      # OUTLINE GATE: a real digit is hugged by a
-            rs = int(ring.sum())                                            # dark outline; content light-blobs are not,
-            if rs == 0 or int(((g <= 110) & (ring > 0)).sum()) / rs < 0.22: # so we skip OCR on them (fast + fewer FPs)
+            rs = int(ring.sum())                                            # dark outline; content light-blobs are not
+            if rs == 0 or int(((g <= 110) & (ring > 0)).sum()) / rs < 0.22:
                 continue
-            pad = 15
-            # A: Otsu of the natural grayscale crop — best for clean digits ('1', etc.)
-            gc = g[max(0, y - pad):y + hh + pad, max(0, x - pad):x + ww + pad]
-            if gc.size:
-                _, ot = cv2.threshold(gc, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-                if ot.mean() < 127:
-                    ot = 255 - ot                                         # Tesseract wants a dark glyph on a light ground
-                r = _ocr(cv2.copyMakeBorder(ot, 40, 40, 40, 40, cv2.BORDER_CONSTANT, value=255))
-                if r:
-                    return r
-            # B: the white glyph's SILHOUETTE — excludes an emblem/shield drawn inside the digit
-            cc = cv2.dilate(comp[max(0, y - pad):y + hh + pad, max(0, x - pad):x + ww + pad] * 255, np.ones((3, 3), np.uint8))
-            if cc.size:
-                r = _ocr(cv2.copyMakeBorder(255 - cc, 40, 40, 40, 40, cv2.BORDER_CONSTANT, value=255))
-                if r:
-                    return r
+            r = _try(g, comp, x, y, ww, hh)
+            if r:
+                return r
         return ""
+    def black_digit(fr):
+        """Method B — isolate the digit by its thick BLACK OUTLINE (background-agnostic). Essential when the
+        digit is a LIGHT colour on a LIGHT background (e.g. Tirupati's '1' and '3'), where the white-fill
+        mask of Method A merges the digit into the background. Used ONLY to fill cards Method A missed."""
+        h, w, _ = fr.shape
+        L = fr[int(.06 * h):int(.95 * h), 0:int(.26 * w)]
+        g = cv2.cvtColor(L, cv2.COLOR_BGR2GRAY); Hh, Ww = L.shape[:2]
+        black = cv2.morphologyEx((g <= 110).astype(np.uint8), cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+        n, lab, st, _c = cv2.connectedComponentsWithStats(black, 8)
+        if n <= 1:
+            return ""
+        i = 1 + int(np.argmax(st[1:, cv2.CC_STAT_AREA])); x, y, ww, hh, area = st[i]
+        if not (hh / Hh >= 0.55 and ww / Ww <= 0.85 and 0.03 <= area / (Hh * Ww) <= 0.22):
+            return ""
+        return _try(g, None, x, y, ww, hh)
     def count_boxes(fr):                          # the intro Table-of-Contents shows ONE white box per section
         h, w, _ = fr.shape; A = h * w
         g = cv2.cvtColor(fr, cv2.COLOR_BGR2GRAY)
@@ -282,36 +304,53 @@ def _detect_sections(src, step=0.5):
     def frame_at(t):
         cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000); ok, fr = cap.read()
         return fr if ok else None
-    # ANCHOR: the intro TOC grid tells us HOW MANY sections to expect — count its numbered boxes
-    n_expected, t = 0, 8.0
-    while t < min(dur - 2, 120):
+    # ANCHOR: the intro Table-of-Contents tells us HOW MANY sections to expect (count its numbered boxes)
+    # and WHERE it ends (last multi-box frame) — so a title/TOC glyph is never mistaken for a section card.
+    n_expected, toc_end, t = 0, 0.0, 8.0
+    while t < min(dur - 2, 70):
         fr = frame_at(t)
         if fr is not None:
-            n_expected = max(n_expected, count_boxes(fr))
+            b = count_boxes(fr); n_expected = max(n_expected, b)
+            if b >= 3:
+                toc_end = t
         t += 1.0
     n_expected = n_expected if 2 <= n_expected <= 8 else 0     # only trust a sane count
-    def digit_at(t):
-        fr = frame_at(t)
-        return read_digit(fr) if fr is not None else ""
-    hits, t = [], 6.0
+    # ONE pass: Method A (white fill) is primary; only where it finds nothing do we try Method B (black outline).
+    wd, bd, t = [], [], 6.0
     while t < dur - 2:
-        if digit_at(t):
-            hits.append(round(t, 1))
+        fr = frame_at(t)
+        if fr is not None:
+            if white_digit(fr):
+                wd.append(round(t, 1))
+            elif black_digit(fr):
+                bd.append(round(t, 1))
         t += step
-    ev = []
-    for tt in hits:
-        if ev and tt - ev[-1][-1] <= 2.0:
-            ev[-1].append(tt)
-        else:
-            ev.append([tt])
-    valid = [c for c in ev if len(c) >= 5]                     # a real section card is held ≥~2.5s
-    if n_expected and len(valid) > n_expected:                # more matches than the TOC says -> keep the most-persistent N
-        valid = sorted(valid, key=len, reverse=True)[:n_expected]
-    valid.sort(key=lambda c: c[0])
+    def _clus(hh):
+        ev = []
+        for tt in hh:
+            if ev and tt - ev[-1][-1] <= 2.0:
+                ev[-1].append(tt)
+            else:
+                ev.append([tt])
+        return [c for c in ev if len(c) >= 5]                  # a real card is held ≥~2.5s
+    wc, bc = _clus(wd), _clus(bd)
+    cards = sorted(c[0] for c in wc)
+    if n_expected and len(cards) > n_expected:                # more than the TOC says -> keep the most-persistent N
+        cards = sorted(sorted(wc, key=len, reverse=True)[i][0] for i in range(n_expected))
+    if n_expected and len(cards) < n_expected:                # a light-on-light card Method A missed ->
+        for c in sorted(bc, key=len, reverse=True):            # rescue it from Method B, past the TOC and well-spaced
+            if len(cards) >= n_expected:
+                break
+            if c[0] > toc_end and all(abs(c[0] - x) > 40 for x in cards):
+                cards.append(c[0])
+    cards.sort()
+    def _present(t):
+        fr = frame_at(t)
+        return fr is not None and bool(white_digit(fr) or black_digit(fr))
     starts = []
-    for c in valid:
-        onset = c[0]; tt = round(c[0] - 0.1, 2)               # refine back to the card's first frame (kills previous-slide flash)
-        while tt > c[0] - 1.0 and digit_at(tt):
+    for c0 in cards:
+        onset = c0; tt = round(c0 - 0.1, 2)                   # refine back to the card's first frame (kills previous-slide flash)
+        while tt > c0 - 1.0 and _present(tt):
             onset = tt; tt = round(tt - 0.1, 2)
         starts.append(round(max(0.0, onset - 0.1), 1))
     cap.release()
