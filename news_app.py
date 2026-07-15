@@ -536,6 +536,7 @@ def render(main_clips, intro, logo, red_text, bottom_text, section_titles, out_p
     final = _concat(parts, os.path.join(D, "joined.mp4"))
     subprocess.run([FF, "-y", "-v", "error", "-i", final, "-c", "copy", "-movflags", "+faststart", out_path], check=True)
     log(f"DONE → {out_path}")
+    shutil.rmtree(D, ignore_errors=True)                # free the tmpfs working dir (keeps /tmp from filling up)
     return out_path
 
 
@@ -727,7 +728,20 @@ h1,h2,h3,h4,h5,p,label,span,li,.stMarkdown{ color:var(--txt); }
 """
 
 
+def _clean_tmp():
+    """Remove leftover render temp dirs older than 1h — /tmp is a small tmpfs and must not fill up."""
+    import glob, time
+    now = time.time()
+    for d in glob.glob("/tmp/news_*") + glob.glob("/tmp/newsui_*"):
+        try:
+            if os.path.isdir(d) and now - os.path.getmtime(d) > 3600:
+                shutil.rmtree(d, ignore_errors=True)
+        except Exception:
+            pass
+
+
 def main():
+    _clean_tmp()
     st.set_page_config(page_title="LocalAI TV Studio", page_icon="📺", layout="wide",
                        initial_sidebar_state="expanded")
     st.markdown(_CSS, unsafe_allow_html=True)
