@@ -798,8 +798,10 @@ def _shorts_panel(D):
         start = st.number_input("▶️ Start from (sec)", 0.0, 36000.0, 0.0, 1.0, key="sh_start",
                                 help="Lambe video me se kahan se kaatna hai.")
     with c3:
-        fill = st.radio("🎨 Look", ["Blurred bg (kuch cut nahi)", "Full crop (screen bhar)"],
-                        key="sh_fill")
+        fill = st.radio("🎨 Look", ["Full screen (normal Short)", "Blurred bg (poora video, chhota)"],
+                        key="sh_fill",
+                        help="Full screen = asli Shorts jaisा, video poori screen bhar deta hai (side thode cut). "
+                             "Blurred bg = kuch cut nahi hota par video chhota dikhta hai aur upar-neeche blur aata hai.")
     if up:
         p = os.path.join(D, "short_src" + os.path.splitext(up.name)[1])
         with open(p, "wb") as w:
@@ -815,7 +817,7 @@ def _shorts_panel(D):
         try:
             with st.spinner("Shorts ban raha hai…"):
                 make_short(src, out, start=start, length=length,
-                           fill=("crop" if "crop" in fill.lower() else "blur"), progress=prog)
+                           fill=("blur" if fill.startswith("Blurred") else "crop"), progress=prog)
             st.success("✅ YouTube Shorts ready — seedha upload kar do!")
             st.video(out)
             with open(out, "rb") as f:
