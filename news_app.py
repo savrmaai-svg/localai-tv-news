@@ -534,7 +534,19 @@ def render(main_clips, intro, logo, red_text, bottom_text, section_titles, out_p
     parts.append(content)
     log("final join…")
     final = _concat(parts, os.path.join(D, "joined.mp4"))
-    subprocess.run([FF, "-y", "-v", "error", "-i", final, "-c", "copy", "-movflags", "+faststart", out_path], check=True)
+    # web-optimize (moov atom to front). Some concat outputs choke `-c copy`, so fall back to a
+    # full re-encode (bulletproof) and, if even that fails, surface ffmpeg's REAL error (not just "254").
+    try:
+        subprocess.run([FF, "-y", "-v", "error", "-i", final, "-c", "copy", "-movflags", "+faststart", out_path],
+                       check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError:
+        log("faststart copy failed — re-encoding final (fallback)…")
+        r = subprocess.run([FF, "-y", "-v", "error", "-i", final,
+                            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+                            "-c:a", "aac", "-b:a", "160k", "-ar", "44100", "-ac", "2",
+                            "-movflags", "+faststart", out_path], capture_output=True, text=True)
+        if r.returncode != 0:
+            raise RuntimeError("final render failed: " + (r.stderr or r.stdout or "unknown ffmpeg error")[-600:])
     log(f"DONE → {out_path}")
     shutil.rmtree(D, ignore_errors=True)                # free the tmpfs working dir (keeps /tmp from filling up)
     return out_path
