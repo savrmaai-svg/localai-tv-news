@@ -407,6 +407,38 @@ def _concat(paths, out):
     return out
 
 
+# ---------------- YouTube Shorts maker ----------------
+SHORT_W, SHORT_H, SHORT_MAX = 1080, 1920, 60          # Shorts = vertical 9:16, max 60s
+
+def make_short(src, out, start=0.0, length=60.0, fill="blur", progress=None):
+    """ANY input video -> a YouTube-Shorts-ready vertical mp4 (1080x1920, <=60s, h264/aac, faststart).
+    fill='blur' = video fitted on a blurred vertical bg (nothing cropped away);
+    fill='crop' = centre-cropped to fill the whole screen."""
+    log = progress or (lambda x: None)
+    length = max(1.0, min(float(SHORT_MAX), float(length)))
+    has_audio = "audio" in subprocess.run([FP, "-v", "error", "-show_entries", "stream=codec_type",
+                                           "-of", "csv=p=0", src], capture_output=True, text=True).stdout
+    if fill == "crop":
+        vf = f"crop='min(iw,ih*9/16)':ih,scale={SHORT_W}:{SHORT_H},setsar=1"
+    else:
+        vf = (f"split[a][b];[a]scale={SHORT_W}:{SHORT_H}:force_original_aspect_ratio=increase,"
+              f"crop={SHORT_W}:{SHORT_H},boxblur=22:2[bg];[b]scale={SHORT_W}:-2[fg];"
+              f"[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1")
+    cmd = [FF, "-y", "-v", "error", "-ss", str(start), "-i", src]
+    if not has_audio:                                  # Shorts play better with an audio track
+        cmd += ["-f", "lavfi", "-t", f"{length:.2f}", "-i", "anullsrc=r=44100:cl=stereo"]
+    cmd += ["-t", f"{length:.2f}", "-vf", vf, "-r", "30",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-b:a", "160k", "-ar", "44100", "-ac", "2",
+            "-movflags", "+faststart", out]
+    log(f"making {length:.0f}s vertical Short ({SHORT_W}x{SHORT_H})…")
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError("shorts render failed: " + (r.stderr or "unknown ffmpeg error")[-500:])
+    log(f"DONE → {out}")
+    return out
+
+
 def render(main_clips, intro, logo, red_text, bottom_text, section_titles, out_path,
            pillar_clip=None, split_times=None, progress=None):
     """intro + [pillar filler -> section] x N, with ONE continuous logo+strip+ticker overlay
@@ -752,6 +784,47 @@ def _clean_tmp():
             pass
 
 
+def _shorts_panel(D):
+    """UI: any-format video in -> YouTube-Shorts-ready vertical video out."""
+    st.caption("Koi bhi format ka video daalo (mp4/mov/mkv/avi/webm…) → **YouTube Shorts ready** "
+               "vertical video (9:16 · 1080×1920 · max 60s) ban ke mil jaayega.")
+    up = st.file_uploader("🎬 Video (any format)", key="sh_up",
+                          type=["mp4", "mov", "webm", "mkv", "avi", "m4v", "mpeg", "mpg", "flv", "wmv", "3gp", "ts"])
+    c1, c2, c3 = st.columns(3, gap="large")
+    with c1:
+        length = st.slider("⏱️ Short length (sec)", 5, SHORT_MAX, SHORT_MAX, 1, key="sh_len",
+                           help="YouTube Shorts ki limit 60 sec hai.")
+    with c2:
+        start = st.number_input("▶️ Start from (sec)", 0.0, 36000.0, 0.0, 1.0, key="sh_start",
+                                help="Lambe video me se kahan se kaatna hai.")
+    with c3:
+        fill = st.radio("🎨 Look", ["Blurred bg (kuch cut nahi)", "Full crop (screen bhar)"],
+                        key="sh_fill")
+    if up:
+        p = os.path.join(D, "short_src" + os.path.splitext(up.name)[1])
+        with open(p, "wb") as w:
+            w.write(up.getbuffer())
+        st.caption(f"Source = {_dur(p):.0f}s → Short = {length}s vertical.")
+    if st.button("📱 Make Shorts video", type="primary", use_container_width=True, key="sh_go"):
+        if not up:
+            st.error("Pehle video daalo."); return
+        src = os.path.join(D, "short_src" + os.path.splitext(up.name)[1])
+        out = os.path.join(D, "youtube_short.mp4")
+        box = st.empty(); logs = []
+        def prog(m): logs.append(str(m)); box.code("\n".join(logs[-8:]))
+        try:
+            with st.spinner("Shorts ban raha hai…"):
+                make_short(src, out, start=start, length=length,
+                           fill=("crop" if "crop" in fill.lower() else "blur"), progress=prog)
+            st.success("✅ YouTube Shorts ready — seedha upload kar do!")
+            st.video(out)
+            with open(out, "rb") as f:
+                st.download_button("⬇️ Download Short", f, "youtube_short.mp4", "video/mp4",
+                                   use_container_width=True, key="sh_dl")
+        except Exception as e:
+            st.error("Shorts error: " + str(e))
+
+
 def main():
     _clean_tmp()
     st.set_page_config(page_title="LocalAI TV Studio", page_icon="📺", layout="wide",
@@ -841,6 +914,9 @@ def main():
 
     if "nd" not in st.session_state: st.session_state.nd = tempfile.mkdtemp(prefix="newsui_")
     D = st.session_state.nd
+
+    with st.expander("📱  YouTube Shorts Maker — koi bhi video → Shorts ready (9:16 · 60s)", expanded=False):
+        _shorts_panel(D)
 
     left, right = st.columns([1.55, 1], gap="large")
     with left:
