@@ -624,6 +624,49 @@ def endcard_for(filler):
     return os.path.join(ENDCARD_DIR, best)
 
 
+def _ocr_city_card(src, samples=8):
+    """Video ke top-right watermark ('RAJAHMUNDRY TV') se card dhoondo.
+
+    Yahi aakhri sahara hai jab file ke naam me city na ho. Watermark animated hota hai
+    (Local AI <-> CITY TV), isliye kai frames dekhte hain. OCR poora naam kabhi nahi deta —
+    'RAJAH ve TV' type kachra aata hai — to card ke naam ke PEHLE 5 akshar dhoondte hain
+    (rajah, gunt u, karim, kurno...) jo aapas me alag hain."""
+    tess = shutil.which("tesseract")
+    if not tess or not os.path.isdir(ENDCARD_DIR):
+        return None
+    dur = _dur(src)
+    if dur <= 0:
+        return None
+    work = tempfile.mkdtemp(prefix="ocr_")
+    text = ""
+    try:
+        for i in range(samples):
+            t = dur * (i + 0.5) / samples
+            png = os.path.join(work, f"f{i}.png")
+            subprocess.run([FF, "-y", "-v", "error", "-ss", f"{t:.2f}", "-i", src, "-frames:v", "1",
+                            "-vf", "crop=iw*0.42:ih*0.28:iw*0.58:0,scale=iw*3:ih*3,"
+                                   "format=gray,eq=contrast=2.0", png], capture_output=True)
+            if not os.path.isfile(png):
+                continue
+            r = subprocess.run([tess, png, "-", "--psm", "7"], capture_output=True, text=True)
+            text += " " + (r.stdout or "")
+        blob = "".join(ch for ch in text.lower() if ch.isalnum())
+        hits = []
+        for f in sorted(os.listdir(ENDCARD_DIR)):
+            name, ext = os.path.splitext(f)
+            if ext.lower() not in CARD_IMG_EXTS + VID_EXTS:
+                continue
+            k = "".join(ch for ch in name.lower() if ch.isalnum())
+            if len(k) >= 5 and k[:5] in blob:
+                hits.append(f)
+        city = [f for f in hits if not f.lower().startswith("localaitv")]
+        return os.path.join(ENDCARD_DIR, (city or hits)[0]) if (city or hits) else None
+    except Exception:
+        return None
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
 def resolve_endcard(*names):
     """Jo bhi naam mile unme se pehla match — filler, video ka apna naam, city, kuch bhi.
     Kuch na mile to main channel ka card. Kabhi khaali haath nahi lautta: card na milne pe
@@ -694,8 +737,17 @@ def brand_video(src, out, D, filler=None, secs=ENDCARD_S, filler_at_start=False,
     parts.append(os.path.join(D, "c_main.mp4"))
     if fill_n and filler_before_card:
         parts.append(fill_n)                              # app card se pehle wahi filler dobara
-    # city -> filler ka naam -> video ka apna naam; teeno khaali to main channel ka card
-    card = endcard or resolve_endcard(city, filler, src)
+    # city -> filler ka naam -> video ka apna naam -> video ke watermark ka OCR;
+    # sab fail ho to main channel ka card
+    card = endcard
+    if not card:
+        for n in (city, filler, src):
+            card = endcard_for(n)
+            if card:
+                break
+    if not card:
+        log("naam se card nahi mila — video ka watermark padh raha hu…")
+        card = _ocr_city_card(src) or resolve_endcard()
     log(f"end card: {os.path.basename(card) if card else 'NAHI MILA'}")
     parts.append(make_endcard(os.path.join(D, "d_endcard.mp4"), D, secs, card_file=card))
     log("joining…")
