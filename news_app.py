@@ -734,15 +734,29 @@ CARD_IMG_EXTS = (".png", ".jpg", ".jpeg", ".webp")
 
 def endcard_for(filler):
     """Filler ke naam se uska city card dhoondo: fillers/guntur.mp4 -> endcards/guntur.png.
-    Image bhi chalegi aur video bhi — jo pehle mile. Na mile to None (tab card generate hoga)."""
-    if not filler:
+
+    Exact naam pe mat atko — asli files '19 guntur_1.mp4' ya 'rajahmundry tv.mp4' jaisi hoti
+    hain. Isliye letters-only banaa ke dekhte hain ki city ka naam kahin ANDAR hai ya nahi,
+    aur sabse LAMBA match jeetta hai (warna 'nellore' vs 'vellore' type ulajhan ho sakti hai).
+    Image bhi chalegi aur video bhi. Kuch na mile to None -> card generate ho jaayega."""
+    if not filler or not os.path.isdir(ENDCARD_DIR):
         return None
-    stem = os.path.splitext(os.path.basename(filler))[0].lower()
-    for ext in CARD_IMG_EXTS + VID_EXTS:
-        p = os.path.join(ENDCARD_DIR, stem + ext)
-        if os.path.isfile(p):
-            return p
-    return None
+    key = lambda s: "".join(ch for ch in s.lower() if ch.isalnum())
+    stem = key(os.path.splitext(os.path.basename(filler))[0])
+    if not stem:
+        return None
+    hits = []
+    for f in sorted(os.listdir(ENDCARD_DIR)):
+        name, ext = os.path.splitext(f)
+        if ext.lower() in CARD_IMG_EXTS + VID_EXTS and key(name) and key(name) in stem:
+            hits.append(f)
+    if not hits:
+        return None
+    # 'localaitv' main channel ka card hai — handles 'localaitv_guntur' jaise hote hain, to
+    # koi city match mile to wahi lo; localaitv sirf tab jab aur kuch na mile.
+    city = [f for f in hits if key(os.path.splitext(f)[0]) != "localaitv"]
+    best = max(city or hits, key=lambda f: len(key(os.path.splitext(f)[0])))
+    return os.path.join(ENDCARD_DIR, best)
 
 
 def _endcard_from_image(img, out, secs=ENDCARD_S):
@@ -891,7 +905,9 @@ def _brand_panel(D):
             w.write(up.getbuffer())
         filler = None
         if f_up:
-            filler = os.path.join(D, "brand_fill" + os.path.splitext(f_up.name)[1])
+            # asli naam rakho (rajahmundry.mp4), fixed naam nahi — endcard_for() isi naam se
+            # city ka card dhoondta hai. basename se path traversal bhi nahi hoga.
+            filler = os.path.join(D, os.path.basename(f_up.name))
             with open(filler, "wb") as w:
                 w.write(f_up.getbuffer())
         elif pick and pick in _f:
