@@ -584,6 +584,293 @@ def render(main_clips, intro, logo, red_text, bottom_text, section_titles, out_p
     return out_path
 
 
+# ---------------- App-download branding: filler + video + end card ----------------
+# Koi bhi video -> [filler] + video + [app download end card].
+# NOTE: mp4 ke andar clickable link ka koi provision hi nahi hai (format me hyperlink hota hi
+# nahi). Isliye card par URL sirf DIKHTA hai, aur clickable copy app_caption() se milti hai —
+# wo caption Facebook/YouTube pe paste karte hi link apne aap clickable ban jaata hai.
+APP_URL = "https://play.google.com/store/apps/details?id=com.localaitv.app&pcampaignid=web_share"
+APP_URL_SHORT = "play.google.com/store/apps/details?id=com.localaitv.app"
+ENDCARD_S = 6
+
+_ENDCARD_ASS = """[Script Info]
+ScriptType: v4.00+
+PlayResX: %(w)d
+PlayResY: %(h)d
+WrapStyle: 2
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
+Style: Mark,%(font)s,%(s54)d,&H00FFFFFF,&H00FFFFFF,&H00301A0A,&H00000000,1,0,0,0,100,100,0,0,1,2,0,5,0,0,0,1
+Style: Head,%(font)s,%(s54)d,&H00FFFFFF,&H00FFFFFF,&H00301A0A,&H00000000,1,0,0,0,100,100,0,0,1,3,0,5,0,0,0,1
+Style: Sub,%(font)s,%(s30)d,&H003CC4FF,&H003CC4FF,&H00301A0A,&H00000000,1,0,0,0,100,100,0,0,1,2,0,5,0,0,0,1
+Style: Url,%(font)s,%(s32)d,&H00381A0C,&H00381A0C,&H00FFFFFF,&H00000000,1,0,0,0,100,100,0,0,1,0,0,5,0,0,0,1
+Style: Cta,%(font)s,%(s38)d,&H00FFFFFF,&H00FFFFFF,&H00301A0A,&H00000000,1,0,0,0,100,100,0,0,1,2,0,5,0,0,0,1
+Style: Free,%(font)s,%(s28)d,&H003CC4FF,&H003CC4FF,&H00301A0A,&H00000000,1,0,0,0,100,100,0,0,1,2,0,5,0,0,0,1
+Style: Tag,%(font)s,%(s24)d,&H00FFFFFF,&H00FFFFFF,&H00301A0A,&H00000000,1,0,0,0,100,100,0,0,1,0,0,5,0,0,0,1
+
+[Events]
+Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
+Dialogue: 0,0:00:00.00,%(end)s,Mark,,0,0,0,,{\\pos(%(cx)d,%(y_mark)d)}LOCAL AI {\\c&H002A20D3&}TV
+Dialogue: 0,0:00:00.00,%(end)s,Head,,0,0,0,,{\\pos(%(cx)d,%(y_head)d)}%(head)s
+Dialogue: 0,0:00:00.00,%(end)s,Sub,,0,0,0,,{\\pos(%(cx)d,%(y_sub)d)}%(sub)s
+Dialogue: 0,0:00:00.00,%(end)s,Url,,0,0,0,,{\\pos(%(cx)d,%(y_url)d)}%(url)s
+Dialogue: 0,0:00:00.00,%(end)s,Cta,,0,0,0,,{\\pos(%(cx)d,%(y_cta)d)}%(cta)s
+Dialogue: 0,0:00:00.00,%(end)s,Free,,0,0,0,,{\\pos(%(cx)d,%(y_free)d)}%(free)s
+Dialogue: 0,0:00:00.00,%(end)s,Tag,,0,0,0,,{\\pos(%(cx)d,%(y_tag)d)}LocalAI TV
+"""
+
+
+def _endcard_ass(path, secs, url_short=APP_URL_SHORT):
+    """Saara text libass se — Telugu shaping isi se sahi aati hai, aur Windows/Linux dono pe same.
+    \\h = hard space; Telugu shaping normal space ko kabhi-kabhi chipka deti hai."""
+    d = {"w": W, "h": H, "font": HEAD_FONT, "cx": W // 2,
+         "end": "0:00:%05.2f" % secs,
+         "head": "మా యాప్ డౌన్‌లోడ్ చేసుకోండి",
+         "sub": "మీ ఊరి వార్తలు — మీ ఫోన్‌లోనే",
+         "url": url_short,
+         # emoji yahan mat daalo — Telugu font me emoji glyph nahi hai, tofu ban jaata hai
+         "cta": "ఉచితంగా\\hడౌన్‌లోడ్\\hచేసుకోండి",
+         "free": "క్లిక్\\hచేయగల\\hలింక్\\h—\\hడిస్క్రిప్షన్‌లో"}
+    for k, v in (("s54", 54), ("s30", 30), ("s32", 32), ("s38", 38), ("s28", 28), ("s24", 24)):
+        d[k] = round(v * H / 720.0)                       # design 720p pe hai, W/H badle to scale ho jaye
+    for k, v in (("y_mark", 100), ("y_head", 225), ("y_sub", 295), ("y_url", 423),
+                 ("y_cta", 545), ("y_free", 600), ("y_tag", 688)):
+        d[k] = round(v * H / 720.0)
+    open(path, "w", encoding="utf-8").write(_ENDCARD_ASS % d)
+    return path
+
+
+_CARD_HTML = """<!doctype html><meta charset="utf-8"><style>
+@font-face{font-family:'NotoTel';src:url(data:font/ttf;base64,%(font)s) format('truetype');font-weight:700}
+*{margin:0;padding:0;box-sizing:border-box}
+body{position:relative;width:%(w)dpx;height:%(h)dpx;overflow:hidden;
+     background:linear-gradient(180deg,#08142E 0%%,#122A5C 100%%);
+     font-family:'NotoTel','Nirmala UI',sans-serif;color:#fff;
+     display:flex;flex-direction:column;align-items:center;justify-content:center;
+     padding:0 0 %(bh)dpx;-webkit-font-smoothing:antialiased}
+.mark{font-family:Arial,sans-serif;font-size:%(f54)dpx;font-weight:700;letter-spacing:2px}
+.mark b{color:#E23B2E}
+.rule{width:%(rw)dpx;height:%(rh)dpx;background:#FFC43C;border-radius:99px;
+      margin:%(m1)dpx 0 %(m2)dpx}
+.head{font-size:%(f52)dpx;font-weight:700;line-height:1.4}
+.sub{font-size:%(f28)dpx;color:#FFC43C;margin-top:%(m3)dpx}
+.row{display:flex;align-items:center;gap:%(gap)dpx;margin-top:%(m4)dpx}
+.qr{width:%(qr)dpx;height:%(qr)dpx;flex:none;background:#fff;border-radius:%(qrr)dpx;
+    padding:%(qrp)dpx}
+.qr svg{width:100%%;height:100%%;display:block}
+.col{display:flex;flex-direction:column;align-items:flex-start}
+.url{background:#fff;color:#0C1A38;font-family:Arial,sans-serif;
+     font-size:%(f27)dpx;font-weight:700;padding:%(up)dpx %(up2)dpx;
+     border-left:%(bl)dpx solid #E23B2E;border-radius:6px}
+.cta{margin-top:%(m5)dpx;font-size:%(f34)dpx;font-weight:700}
+.free{margin-top:%(m3)dpx;font-size:%(f24)dpx;color:#FFC43C}
+.bar{position:absolute;left:0;right:0;bottom:0;height:%(bh)dpx;background:#E23B2E;
+     font-family:Arial,sans-serif;font-size:%(f24)dpx;font-weight:700;
+     display:flex;align-items:center;justify-content:center}
+</style>
+<div class="mark">LOCAL AI <b>TV</b></div>
+<div class="rule"></div>
+<div class="head">%(head)s</div>
+<div class="sub">%(sub)s</div>
+<div class="row">
+  <div class="qr">%(qrsvg)s</div>
+  <div class="col">
+    <div class="url">%(url)s</div>
+    <div class="cta">%(cta)s</div>
+    <div class="free">%(free)s</div>
+  </div>
+</div>
+<div class="bar">LocalAI TV</div>
+"""
+
+
+def _qr_svg(data=APP_URL):
+    """QR ko SVG me banao — Pillow ki zarurat nahi padti (raster factory ko padti hai),
+    aur SVG seedha HTML me inline ho jaata hai. XML declaration hata do, warna inline invalid."""
+    import io, qrcode, qrcode.image.svg
+    buf = io.BytesIO()
+    qrcode.make(data, image_factory=qrcode.image.svg.SvgPathImage,
+                box_size=10, border=1).save(buf)
+    svg = buf.getvalue().decode()
+    return svg[svg.index("<svg"):]
+
+
+def _endcard_png(png, secs=None):
+    """Card ko Chrome (Playwright) se render karo — Telugu shaping libass se kaafi behtar aati hai
+    (matras/conjuncts sahi baithte hain). Font base64 me inline hai taaki VPS pe bhi mile."""
+    import base64
+    from playwright.sync_api import sync_playwright
+    k = H / 720.0
+    px = lambda v: round(v * k)
+    with open(NOTO_TTF, "rb") as f:
+        font_b64 = base64.b64encode(f.read()).decode()
+    html = _CARD_HTML % {
+        "font": font_b64, "w": W, "h": H, "qrsvg": _qr_svg(),
+        "f54": px(54), "f52": px(52), "f34": px(34), "f28": px(28), "f27": px(27), "f24": px(24),
+        "rw": px(180), "rh": px(6), "m1": px(14), "m2": px(40), "m3": px(8), "m4": px(40),
+        "m5": px(18), "gap": px(28), "qr": px(190), "qrr": px(12), "qrp": px(10),
+        "up": px(18), "up2": px(28), "bl": px(10), "bh": px(56),
+        "head": "మా యాప్ డౌన్‌లోడ్ చేసుకోండి",
+        "sub": "మీ ఊరి వార్తలు — మీ ఫోన్‌లోనే",
+        "url": APP_URL_SHORT,
+        "cta": "ఉచితంగా డౌన్‌లోడ్ చేసుకోండి",
+        "free": "క్లిక్ చేయగల లింక్ — డిస్క్రిప్షన్‌లో",
+    }
+    with sync_playwright() as p:
+        b = p.chromium.launch()
+        pg = b.new_page(viewport={"width": W, "height": H}, device_scale_factor=1)
+        pg.set_content(html)
+        pg.wait_for_timeout(250)                       # font load hone do
+        pg.screenshot(path=png)
+        b.close()
+    return png
+
+
+def make_endcard(out, D, secs=ENDCARD_S):
+    """App-download end card (W x H, silent audio).
+    Pehle Chrome se (Telugu sabse sahi); wo na chale to libass wala purana rasta."""
+    if os.path.isfile(NOTO_TTF):
+        try:
+            _ensure_chromium()
+            png = _endcard_png(os.path.join(D, "card.png"))
+            subprocess.run([FF, "-y", "-v", "error", "-loop", "1", "-t", str(secs), "-i", png,
+                            "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
+                            "-vf", f"fade=t=in:st=0:d=0.5,format=yuv420p", "-t", str(secs),
+                            "-r", str(FPS), "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+                            "-c:a", "aac", "-b:a", "160k", "-ar", "44100", "-ac", "2", out],
+                           check=True)
+            return out
+        except Exception:
+            pass                                       # Chromium na mila -> libass fallback
+    return _endcard_libass(out, D, secs)
+
+
+def _endcard_libass(out, D, secs=ENDCARD_S):
+    """Fallback: sirf ffmpeg + libass (Playwright/Chromium available na ho tab)."""
+    if os.path.isfile(NOTO_TTF):
+        shutil.copy(NOTO_TTF, os.path.join(D, "NotoSansTelugu-Bold.ttf"))   # libass ko fontsdir=. se milega
+    ass = _endcard_ass(os.path.join(D, "endcard.ass"), secs)
+    k = H / 720.0
+    box_x, box_y, box_w, box_h = round(90 * k), round(380 * k), round(1100 * k), round(86 * k)
+    vf = (f"drawbox=x=(iw-{round(180*k)})/2:y={round(140*k)}:w={round(180*k)}:h={round(6*k)}"
+          f":color=0xFFC43C:t=fill,"
+          f"drawbox=x={box_x}:y={box_y}:w={box_w}:h={box_h}:color=0xFFFFFF:t=fill,"
+          f"drawbox=x={box_x}:y={box_y}:w={round(8*k)}:h={box_h}:color=0xD3202A:t=fill,"
+          f"drawbox=x=0:y={H - round(64*k)}:w={W}:h={round(64*k)}:color=0xD3202A:t=fill,"
+          f"subtitles={os.path.basename(ass)}:fontsdir=.,"
+          f"fade=t=in:st=0:d=0.5,format=yuv420p")
+    subprocess.run([FF, "-y", "-v", "error",
+                    "-f", "lavfi", "-i", f"color=c=0x0C1E46:s={W}x{H}:r={FPS}:d={secs}",
+                    "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
+                    "-vf", vf, "-t", str(secs),
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+                    "-c:a", "aac", "-b:a", "160k", "-ar", "44100", "-ac", "2", out],
+                   check=True, cwd=D)
+    return out
+
+
+def app_caption(title="", city=""):
+    """Yahi wo jagah hai jahan link SACH ME clickable banta hai — post ka caption/description."""
+    tags = "#LocalAITV #TeluguNews" + (f" #{city.strip().replace(' ', '')}" if city.strip() else "")
+    return (f"{title.strip() or 'మీ ఊరి తాజా వార్తలు 📺'}\n\n"
+            f"📱 LocalAI TV యాప్ డౌన్‌లోడ్ చేసుకోండి — ఉచితం!\n"
+            f"మీ ఊరి వార్తలు, మీ ఫోన్‌లోనే.\n\n"
+            f"👇 ఇక్కడ క్లిక్ చేయండి\n{APP_URL}\n\n{tags}\n")
+
+
+def brand_video(src, out, D, filler=None, secs=ENDCARD_S, filler_at_start=False,
+                filler_before_card=True, progress=None):
+    """[filler?] + src + [filler] + [app end card] -> out.
+
+    filler_at_start default FALSE hai: news app se bane videos me filler pehle se laga hota hai,
+    to yahan dobara lagane se shuru me do baar chal jaata hai. Kaccha/raw video ho tabhi ON karo.
+    Filler ek hi baar normalize hota hai; concat list me wahi file dobara likh dete hain."""
+    log = progress or (lambda *_a: None)
+    fill_n, parts = None, []
+    if filler and os.path.isfile(filler):
+        log("normalizing filler…")
+        fill_n = os.path.join(D, "b_filler.mp4")
+        _normalize(filler, fill_n)
+        if filler_at_start:
+            parts.append(fill_n)
+    log("normalizing video…")
+    _normalize(src, os.path.join(D, "c_main.mp4"))
+    parts.append(os.path.join(D, "c_main.mp4"))
+    if fill_n and filler_before_card:
+        parts.append(fill_n)                              # app card se pehle wahi filler dobara
+    log("making app end card…")
+    parts.append(make_endcard(os.path.join(D, "d_endcard.mp4"), D, secs))
+    log("joining…")
+    _concat(parts, out)
+    log(f"DONE → {out}")
+    return out
+
+
+def _brand_panel(D):
+    """UI: koi bhi video -> filler shuru me + app download card end me + ready caption."""
+    st.caption("Koi bhi video daalo → **shuru me filler** + **end me app download card** lag jaayega, "
+               "aur saath me **caption** milega jisme link **clickable** hota hai.")
+    up = st.file_uploader("🎬 Video (any format)", key="br_up",
+                          type=["mp4", "mov", "webm", "mkv", "avi", "m4v", "mpeg", "mpg", "flv", "wmv", "3gp", "ts"])
+    _f = _list_media("fillers", VID_EXTS, "📢")
+    c1, c2 = st.columns(2, gap="large")
+    with c1:
+        pick = st.selectbox("🎞️ Filler (shuru me)", ["— none —"] + list(_f), key="br_fill") if _f else None
+        f_up = st.file_uploader("…ya filler upload karo", key="br_fup", type=list(e[1:] for e in VID_EXTS))
+    with c2:
+        secs = st.slider("⏱️ End card kitne second", 3, 12, ENDCARD_S, 1, key="br_secs")
+        city = st.text_input("📍 City (caption hashtag)", "", key="br_city", placeholder="Warangal")
+    k1, k2 = st.columns(2)
+    with k1:
+        at_start = st.checkbox("▶️ Filler **shuru me** bhi lagao", True, key="br_start",
+                               help="Video me filler pehle se laga ho (news app se bana ho) to ye OFF "
+                                    "kar do — warna shuru me do baar chalega.")
+    with k2:
+        twice = st.checkbox("🔁 Filler **app card se pehle**", True, key="br_twice",
+                            help="Video khatam → wahi filler → app download card.")
+    title = st.text_input("📰 Caption ki pehli line", "", key="br_title",
+                          placeholder="మీ ఊరి తాజా వార్తలు 📺")
+
+    if st.button("🎬 Video + app card banao", type="primary", use_container_width=True, key="br_go"):
+        if not up:
+            st.error("Pehle video daalo."); return
+        src = os.path.join(D, "brand_src" + os.path.splitext(up.name)[1])
+        with open(src, "wb") as w:
+            w.write(up.getbuffer())
+        filler = None
+        if f_up:
+            filler = os.path.join(D, "brand_fill" + os.path.splitext(f_up.name)[1])
+            with open(filler, "wb") as w:
+                w.write(f_up.getbuffer())
+        elif pick and pick in _f:
+            filler = _f[pick]
+        out = os.path.join(D, "branded.mp4")
+        box, logs = st.empty(), []
+        def prog(m): logs.append(str(m)); box.code("\n".join(logs[-8:]))
+        try:
+            with st.spinner("Ban raha hai…"):
+                brand_video(src, out, D, filler=filler, secs=secs, filler_at_start=at_start,
+                            filler_before_card=twice, progress=prog)
+            st.session_state.br_out = out
+            st.session_state.br_cap = app_caption(title, city)
+        except Exception as e:
+            st.error("Branding error: " + str(e)); return
+
+    out = st.session_state.get("br_out")
+    if out and os.path.isfile(out):
+        st.success("✅ Ready!")
+        st.video(out)
+        with open(out, "rb") as f:
+            st.download_button("⬇️ Download video", f, "branded.mp4", "video/mp4",
+                               use_container_width=True, key="br_dl")
+        st.markdown("#### 📋 Caption — ye paste karo, link yahan **clickable** banega")
+        st.code(st.session_state.get("br_cap", ""), language=None)
+        st.download_button("⬇️ caption.txt", st.session_state.get("br_cap", "").encode("utf-8"),
+                           "caption.txt", "text/plain", use_container_width=True, key="br_capdl")
+
+
 # ---------------- Streamlit UI ----------------
 _CSS = """
 <style>
@@ -919,6 +1206,9 @@ def main():
 
     with st.expander("📱  YouTube Shorts Maker — koi bhi video → Shorts ready (9:16 · 60s)", expanded=False):
         _shorts_panel(D)
+
+    with st.expander("🔗  App Link Maker — filler shuru me + app download card end me", expanded=False):
+        _brand_panel(D)
 
     left, right = st.columns([1.55, 1], gap="large")
     with left:

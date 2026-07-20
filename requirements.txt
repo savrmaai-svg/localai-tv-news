@@ -4,3 +4,4 @@ numpy
 imageio-ffmpeg
 playwright
 pytesseract
+qrcode
