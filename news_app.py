@@ -439,6 +439,78 @@ def make_short(src, out, start=0.0, length=60.0, fill="blur", progress=None):
     return out
 
 
+def _fit_to(src, out, w, h, secs=None, fade=False, fps=30):
+    """Koi bhi clip/image -> w x h. Kinare usi cheez ke blurred copy se bharte hain, kaali
+    pattiyon se behtar. 16:9 card ko 9:16 Short me daalne pe yahi bachata hai."""
+    is_img = src.lower().endswith((".png", ".jpg", ".jpeg", ".webp"))
+    fc = (f"[0:v]scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},"
+          f"boxblur=30:3,eq=brightness=-0.12[bg];"
+          f"[0:v]scale={w}:{h}:force_original_aspect_ratio=decrease[fg];"
+          f"[bg][fg]overlay=(W-w)/2:(H-h)/2"
+          + (",fade=t=in:st=0:d=0.5" if fade else "") + ",format=yuv420p[v]")
+    cmd = [FF, "-y", "-v", "error"]
+    if is_img:
+        cmd += ["-loop", "1", "-t", str(secs or 6), "-i", src,
+                "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo"]
+        amap = ["-map", "1:a"]
+    else:
+        has_a = "audio" in subprocess.run([FP, "-v", "error", "-show_entries", "stream=codec_type",
+                                           "-of", "csv=p=0", src], capture_output=True, text=True).stdout
+        cmd += ["-i", src]
+        if not has_a:
+            cmd += ["-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo", "-shortest"]
+        amap = ["-map", "1:a"] if not has_a else ["-map", "0:a"]
+    cmd += ["-filter_complex", fc, "-map", "[v]"] + amap
+    if secs:
+        cmd += ["-t", str(secs)]
+    cmd += ["-r", str(fps), "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+            "-c:a", "aac", "-b:a", "160k", "-ar", "44100", "-ac", "2", out]
+    subprocess.run(cmd, check=True)
+    return out
+
+
+def brand_short(src, out, D, endcard, filler=None, start=0.0, length=SHORT_MAX, fill="crop",
+                filler_at_start=True, filler_before_card=True, card_secs=6, progress=None):
+    """[filler] + Short + [filler] + end card, sab 9:16 me, total <= 60s.
+
+    Shorts ki 60s limit poore video pe lagti hai — isliye filler aur card ki length pehle
+    ghata ke hi Short kaata jaata hai, warna YouTube use Short maanna band kar deta hai."""
+    log = progress or (lambda *_a: None)
+    fill_n, fdur = None, 0.0
+    if filler and os.path.isfile(filler):
+        log("fitting filler to 9:16…")
+        fill_n = _fit_to(filler, os.path.join(D, "s_fill.mp4"), SHORT_W, SHORT_H)
+        fdur = _dur(fill_n)
+    n_fill = (1 if filler_at_start else 0) + (1 if (fill_n and filler_before_card) else 0)
+    budget = SHORT_MAX - card_secs - fdur * n_fill
+    if budget < 5:                                  # card/filler hi 55s kha gaye
+        raise RuntimeError(f"Filler + end card already {SHORT_MAX - budget:.0f}s — "
+                           f"end card chhota karo.")
+    length = max(1.0, min(float(length), budget))
+    log(f"short body: {length:.0f}s  (+{fdur*n_fill:.0f}s filler +{card_secs}s card)")
+
+    parts = []
+    if fill_n and filler_at_start:
+        parts.append(fill_n)
+    parts.append(make_short(src, os.path.join(D, "s_body.mp4"), start, length, fill, log))
+    if fill_n and filler_before_card:
+        parts.append(fill_n)
+    log(f"end card: {os.path.basename(endcard)}")
+    parts.append(_fit_to(endcard, os.path.join(D, "s_card.mp4"), SHORT_W, SHORT_H,
+                         secs=card_secs, fade=True))
+
+    lst = os.path.join(D, "s_list.txt")
+    with open(lst, "w", encoding="utf-8") as f:
+        for p in parts:
+            f.write("file '%s'\n" % p.replace("\\", "/"))
+    subprocess.run([FF, "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", lst,
+                    "-r", "30", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+                    "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-ar", "44100",
+                    "-ac", "2", "-movflags", "+faststart", out], check=True)
+    log(f"DONE → {out}  ({_dur(out):.0f}s)")
+    return out
+
+
 def render(main_clips, intro, logo, red_text, bottom_text, section_titles, out_path,
            pillar_clip=None, split_times=None, progress=None):
     """intro + [pillar filler -> section] x N, with ONE continuous logo+strip+ticker overlay
@@ -1011,46 +1083,114 @@ def _clean_tmp():
 
 
 def _shorts_panel(D):
-    """UI: any-format video in -> YouTube-Shorts-ready vertical video out."""
-    st.caption("Koi bhi format ka video daalo (mp4/mov/mkv/avi/webm…) → **YouTube Shorts ready** "
-               "vertical video (9:16 · 1080×1920 · max 60s) ban ke mil jaayega.")
+    """UI: any video -> vertical Short with filler + app end card + ready caption."""
+    st.caption("Drop in any video (mp4/mov/mkv/avi/webm…) → a **YouTube Shorts ready** vertical "
+               "video (9:16 · 1080×1920 · max 60s) with a **filler**, the **app download card** "
+               "and a **caption** to paste.")
     up = st.file_uploader("🎬 Video (any format)", key="sh_up",
                           type=["mp4", "mov", "webm", "mkv", "avi", "m4v", "mpeg", "mpg", "flv", "wmv", "3gp", "ts"])
     c1, c2, c3 = st.columns(3, gap="large")
     with c1:
-        length = st.slider("⏱️ Short length (sec)", 5, SHORT_MAX, SHORT_MAX, 1, key="sh_len",
-                           help="YouTube Shorts ki limit 60 sec hai.")
+        length = st.slider("⏱️ Short length (seconds)", 5, SHORT_MAX, SHORT_MAX, 1, key="sh_len",
+                           help="YouTube's Shorts limit is 60s. Filler and end card are counted "
+                                "in that, so this gets trimmed down to fit.")
     with c2:
-        start = st.number_input("▶️ Start from (sec)", 0.0, 36000.0, 0.0, 1.0, key="sh_start",
-                                help="Lambe video me se kahan se kaatna hai.")
+        start = st.number_input("▶️ Start from (seconds)", 0.0, 36000.0, 0.0, 1.0, key="sh_start",
+                                help="Where to cut from in a longer video.")
     with c3:
-        fill = st.radio("🎨 Look", ["Full screen (normal Short)", "Blurred bg (poora video, chhota)"],
+        fill = st.radio("🎨 Look", ["Full screen (normal Short)", "Blurred background (nothing cropped)"],
                         key="sh_fill",
-                        help="Full screen = asli Shorts jaisा, video poori screen bhar deta hai (side thode cut). "
-                             "Blurred bg = kuch cut nahi hota par video chhota dikhta hai aur upar-neeche blur aata hai.")
-    if up:
-        p = os.path.join(D, "short_src" + os.path.splitext(up.name)[1])
-        with open(p, "wb") as w:
-            w.write(up.getbuffer())
-        st.caption(f"Source = {_dur(p):.0f}s → Short = {length}s vertical.")
-    if st.button("📱 Make Shorts video", type="primary", use_container_width=True, key="sh_go"):
+                        help="Full screen fills the whole phone like a real Short, trimming the "
+                             "sides. Blurred background keeps every pixel but shows the video "
+                             "smaller with blur above and below.")
+
+    _f = _list_media("fillers", VID_EXTS, "📢")
+    s1, s2 = st.columns(2, gap="large")
+    with s1:
+        pick = st.selectbox("🎞️ Filler", ["— none —"] + list(_f), key="sh_fill_pick") if _f else None
+        f_up = st.file_uploader("…or upload a filler", key="sh_fup",
+                                type=list(e[1:] for e in VID_EXTS))
+    with s2:
+        card_secs = st.slider("⏱️ End card length (seconds)", 3, 12, ENDCARD_S, 1, key="sh_csecs")
+        city = st.text_input("📍 City", "", key="sh_city", placeholder="Rajahmundry",
+                             help="Used for the caption hashtags.")
+    k1, k2 = st.columns(2)
+    with k1:
+        at_start = st.checkbox("▶️ Filler at the **start** too", True, key="sh_start_f")
+    with k2:
+        twice = st.checkbox("🔁 Filler **before the end card**", True, key="sh_twice")
+    title = st.text_input("📰 Caption headline", "", key="sh_title",
+                          placeholder="మీ ఊరి తాజా వార్తలు 📺",
+                          help="Hashtags are generated from this line.")
+
+    _cards = _list_media("endcards", CARD_IMG_EXTS + VID_EXTS, "🖼️")
+    e1, e2 = st.columns(2, gap="large")
+    with e1:
+        card_pick = st.selectbox("🖼️ End card  ·  REQUIRED", ["— select —"] + list(_cards),
+                                 key="sh_card",
+                                 help="Pick the card for the city this Short is for.")
+    with e2:
+        card_up = st.file_uploader("…or upload a card", key="sh_cup",
+                                   type=[e[1:] for e in CARD_IMG_EXTS + VID_EXTS])
+
+    if city.strip():
+        st.caption("🏷️ Hashtags: " + " ".join(viral_hashtags(title, city)))
+    if card_up:
+        st.success(f"🖼️ End card: **{card_up.name}**")
+    elif card_pick in _cards:
+        st.success(f"🖼️ End card: **{os.path.basename(_cards[card_pick])}**")
+    else:
+        st.warning("🖼️ Select an end card — the Short won't render without one.")
+
+    if st.button("📱 Make Short + app card", type="primary", use_container_width=True, key="sh_go"):
         if not up:
-            st.error("Pehle video daalo."); return
-        src = os.path.join(D, "short_src" + os.path.splitext(up.name)[1])
+            st.error("Add a video first."); return
+        src = os.path.join(D, os.path.basename(up.name))
+        with open(src, "wb") as w:
+            w.write(up.getbuffer())
+        filler = None
+        if f_up:
+            filler = os.path.join(D, os.path.basename(f_up.name))
+            with open(filler, "wb") as w:
+                w.write(f_up.getbuffer())
+        elif pick and pick in _f:
+            filler = _f[pick]
+        card = None
+        if card_up:
+            card = os.path.join(D, "sh_card" + os.path.splitext(card_up.name)[1])
+            with open(card, "wb") as w:
+                w.write(card_up.getbuffer())
+        elif card_pick in _cards:
+            card = _cards[card_pick]
+        if not card:
+            st.error("🖼️ **Select an end card** — pick your city's card, or upload one."); return
         out = os.path.join(D, "youtube_short.mp4")
-        box = st.empty(); logs = []
+        box, logs = st.empty(), []
         def prog(m): logs.append(str(m)); box.code("\n".join(logs[-8:]))
         try:
-            with st.spinner("Shorts ban raha hai…"):
-                make_short(src, out, start=start, length=length,
-                           fill=("blur" if fill.startswith("Blurred") else "crop"), progress=prog)
-            st.success("✅ YouTube Shorts ready — seedha upload kar do!")
-            st.video(out)
-            with open(out, "rb") as f:
-                st.download_button("⬇️ Download Short", f, "youtube_short.mp4", "video/mp4",
-                                   use_container_width=True, key="sh_dl")
+            with st.spinner("Rendering…"):
+                brand_short(src, out, D, card, filler=filler, start=start, length=length,
+                            fill=("blur" if fill.startswith("Blurred") else "crop"),
+                            filler_at_start=at_start, filler_before_card=twice,
+                            card_secs=card_secs, progress=prog)
+            st.session_state.sh_out = out
+            st.session_state.sh_cap = app_caption(title, city)
         except Exception as e:
-            st.error("Shorts error: " + str(e))
+            st.error("Shorts error: " + str(e)); return
+
+    out = st.session_state.get("sh_out")
+    if out and os.path.isfile(out):
+        st.success(f"✅ Short ready — {_dur(out):.0f}s, upload it straight to YouTube!")
+        st.video(out)
+        with open(out, "rb") as f:
+            st.download_button("⬇️ Download Short", f, "youtube_short.mp4", "video/mp4",
+                               use_container_width=True, key="sh_dl")
+        cap = st.session_state.get("sh_cap", "")
+        st.markdown("#### 📋 Caption — paste this; the link turns clickable where you post it")
+        st.code(cap, language=None)
+        st.markdown(f"🔗 **Test the link:** [{APP_URL_SHORT}]({APP_URL})")
+        st.download_button("⬇️ caption.txt", cap.encode("utf-8"), "caption.txt", "text/plain",
+                           use_container_width=True, key="sh_capdl")
 
 
 def main():
