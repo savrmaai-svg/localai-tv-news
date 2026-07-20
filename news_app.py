@@ -874,7 +874,13 @@ def _brand_panel(D):
         f_up = st.file_uploader("…ya filler upload karo", key="br_fup", type=list(e[1:] for e in VID_EXTS))
     with c2:
         secs = st.slider("⏱️ End card kitne second", 3, 12, ENDCARD_S, 1, key="br_secs")
-        city = st.text_input("📍 City (caption hashtag)", "", key="br_city", placeholder="Warangal")
+        city = st.text_input("📍 City", "", key="br_city", placeholder="Rajahmundry",
+                             help="Caption ka hashtag banata hai, aur isi naam se end card bhi "
+                                  "chun leta hai — filler na chuna ho tab kaam aata hai.")
+        if city.strip():
+            _c = endcard_for(city)
+            st.caption(f"🖼️ End card: **{os.path.basename(_c)}**" if _c
+                       else "🖼️ Is naam ka koi card nahi mila — auto-generate hoga.")
     k1, k2 = st.columns(2)
     with k1:
         at_start = st.checkbox("▶️ Filler **shuru me** bhi lagao", True, key="br_start",
@@ -918,7 +924,11 @@ def _brand_panel(D):
             with open(card, "wb") as w:
                 w.write(card_up.getbuffer())
         elif card_pick in _cards:
-            card = _cards[card_pick]               # warna None -> filler ke naam se auto
+            card = _cards[card_pick]
+        else:
+            # City field se bhi card mil jaata hai — filler na chuna ho tab yahi bachata hai.
+            # Kuch na mile to None, aur brand_video filler ke naam se dhoondh lega.
+            card = endcard_for(city)
         out = os.path.join(D, "branded.mp4")
         box, logs = st.empty(), []
         def prog(m): logs.append(str(m)); box.code("\n".join(logs[-8:]))
