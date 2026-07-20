@@ -626,10 +626,54 @@ def make_endcard(out, D, secs=ENDCARD_S, card_file=None):
     return out
 
 
+# Telangana vs AP — #TelanganaNews / #APNews sahi lagta hai to reach us state me behtar hoti hai
+_TS_CITIES = {"karimnagar", "khammam", "mahabubnagar", "nalgonda", "nizamabad",
+              "siddipet", "warangal", "hyderabad"}
+# headline me ye shabd mile -> ye topic tags. Telugu + English dono, kyunki title mixed hota hai.
+_TOPIC_TAGS = [
+    (("ఉద్యోగ", "జాబ్", "job", "mela", "recruit", "నియామక"), ["#JobAlert", "#JobMela", "#Employment"]),
+    (("వర్ష", "వాన", "rain", "weather", "తుఫాన్", "cyclone"), ["#Rains", "#WeatherAlert"]),
+    (("రైతు", "పంట", "farmer", "crop", "వ్యవసాయ"), ["#Farmers", "#Agriculture"]),
+    (("విద్యార్థి", "పాఠశాల", "student", "school", "college", "exam", "పరీక్ష"), ["#Education", "#Students"]),
+    (("ఆలయ", "temple", "దేవాలయ", "ఉత్సవ", "festival", "పండుగ"), ["#Temple", "#Festival"]),
+    (("ఆసుపత్రి", "health", "వైద్య", "hospital", "డాక్టర్"), ["#Health"]),
+    (("ఎన్నిక", "election", "ఓటు", "vote"), ["#Elections"]),
+    (("ట్రాఫిక్", "traffic", "రోడ్డు", "road"), ["#Traffic", "#RoadNews"]),
+    (("కరెంట్", "విద్యుత్", "power", "current"), ["#PowerCut"]),
+    (("నీటి", "water", "తాగునీ"), ["#WaterIssue"]),
+    (("ముఖ్యమంత్రి", "మంత్రి", "minister", "cm ", "collector", "కలెక్టర్"), ["#Politics"]),
+    (("పోలీస్", "police"), ["#Police"]),
+]
+
+
+def viral_hashtags(text="", city="", limit=14):
+    """Headline + city se hashtags — sabse pehle city ke, phir topic ke, phir evergreen.
+
+    City tags sabse aage isliye ki wahi sabse targeted hote hain: '#RajahmundryNews' pe
+    scroll karne wale wahin ke log hote hain, jabki '#Viral' pe koi bhi. Reach kam par
+    sahi audience — install usi se aata hai."""
+    t = (text or "").lower()
+    tags, c = [], "".join(ch for ch in (city or "") if ch.isalnum()).title()
+    if c:
+        tags += [f"#{c}", f"#{c}News", f"#{c}Updates"]
+    for words, tt in _TOPIC_TAGS:
+        if any(w in t for w in words):
+            tags += tt
+    tags += ["#TelanganaNews" if (city or "").lower() in _TS_CITIES else "#APNews"]
+    tags += ["#TeluguNews", "#LocalNews", "#BreakingNews", "#TeluguUpdates",
+             "#LocalAITV", "#TodayNews", "#ViralNews"]
+    seen, out = set(), []
+    for x in tags:                                  # dedupe, order bana ke rakho
+        if x.lower() not in seen:
+            seen.add(x.lower()); out.append(x)
+    return out[:limit]
+
+
 def app_caption(title="", city=""):
-    """Yahi wo jagah hai jahan link SACH ME clickable banta hai — post ka caption/description."""
-    tags = "#LocalAITV #TeluguNews" + (f" #{city.strip().replace(' ', '')}" if city.strip() else "")
-    return (f"{title.strip() or 'మీ ఊరి తాజా వార్తలు 📺'}\n\n"
+    """This is where the link actually becomes clickable — the post caption/description."""
+    head = title.strip() or "మీ ఊరి తాజా వార్తలు 📺"
+    tags = " ".join(viral_hashtags(head, city))
+    return (f"{head}\n\n"
             f"📱 LocalAI TV యాప్ డౌన్‌లోడ్ చేసుకోండి — ఉచితం!\n"
             f"మీ ఊరి వార్తలు, మీ ఫోన్‌లోనే.\n\n"
             f"👇 ఇక్కడ క్లిక్ చేయండి\n{APP_URL}\n\n{tags}\n")
@@ -666,53 +710,58 @@ def brand_video(src, out, D, endcard, filler=None, secs=ENDCARD_S, filler_at_sta
 
 
 def _brand_panel(D):
-    """UI: koi bhi video -> filler shuru me + app download card end me + ready caption."""
-    st.caption("Koi bhi video daalo → **shuru me filler** + **end me app download card** lag jaayega, "
-               "aur saath me **caption** milega jisme link **clickable** hota hai.")
+    """UI: any video -> filler at the start + app download card at the end + ready caption."""
+    st.caption("Drop in any video → a **filler at the start** and an **app download card at the "
+               "end** get added, plus a **caption** where the link is clickable.")
     up = st.file_uploader("🎬 Video (any format)", key="br_up",
                           type=["mp4", "mov", "webm", "mkv", "avi", "m4v", "mpeg", "mpg", "flv", "wmv", "3gp", "ts"])
     _f = _list_media("fillers", VID_EXTS, "📢")
     c1, c2 = st.columns(2, gap="large")
     with c1:
-        pick = st.selectbox("🎞️ Filler (shuru me)", ["— none —"] + list(_f), key="br_fill") if _f else None
-        f_up = st.file_uploader("…ya filler upload karo", key="br_fup", type=list(e[1:] for e in VID_EXTS))
+        pick = st.selectbox("🎞️ Filler", ["— none —"] + list(_f), key="br_fill") if _f else None
+        f_up = st.file_uploader("…or upload a filler", key="br_fup", type=list(e[1:] for e in VID_EXTS))
     with c2:
-        secs = st.slider("⏱️ End card kitne second", 3, 12, ENDCARD_S, 1, key="br_secs")
-        city = st.text_input("📍 City (optional)", "", key="br_city", placeholder="Rajahmundry",
-                             help="Khaali chhod do — card filler ya video ke naam se apne aap "
-                                  "chun jaata hai. Sirf tab bharo jab auto galat chune.")
+        secs = st.slider("⏱️ End card length (seconds)", 3, 12, ENDCARD_S, 1, key="br_secs")
+        city = st.text_input("📍 City", "", key="br_city", placeholder="Rajahmundry",
+                             help="Used for the caption hashtags — #Rajahmundry, "
+                                  "#RajahmundryNews and the right state tag.")
     k1, k2 = st.columns(2)
     with k1:
-        at_start = st.checkbox("▶️ Filler **shuru me** bhi lagao", True, key="br_start",
-                               help="Video me filler pehle se laga ho (news app se bana ho) to ye OFF "
-                                    "kar do — warna shuru me do baar chalega.")
+        at_start = st.checkbox("▶️ Filler at the **start** too", True, key="br_start",
+                               help="Turn this OFF if the video already begins with a filler "
+                                    "(bulletins made in this app do) — otherwise it plays twice.")
     with k2:
-        twice = st.checkbox("🔁 Filler **app card se pehle**", True, key="br_twice",
-                            help="Video khatam → wahi filler → app download card.")
-    title = st.text_input("📰 Caption ki pehli line", "", key="br_title",
-                          placeholder="మీ ఊరి తాజా వార్తలు 📺")
+        twice = st.checkbox("🔁 Filler **before the end card**", True, key="br_twice",
+                            help="Video ends → the same filler → app download card.")
+    title = st.text_input("📰 Caption headline", "", key="br_title",
+                          placeholder="మీ ఊరి తాజా వార్తలు 📺",
+                          help="Hashtags are generated from this line — a headline about a job "
+                               "mela gets #JobAlert, one about rain gets #WeatherAlert.")
 
     _cards = _list_media("endcards", CARD_IMG_EXTS + VID_EXTS, "🖼️")
-    NONE = "— chuno —"
+    NONE = "— select —"
     e1, e2 = st.columns(2, gap="large")
     with e1:
-        card_pick = st.selectbox("🖼️ End card  ·  ZAROORI", [NONE] + list(_cards), key="br_card",
-                                 help="Jis city ka video hai wahi card chuno. Filler jaisa hi — "
-                                      "khud chunna hai, apne aap nahi hoga.")
+        card_pick = st.selectbox("🖼️ End card  ·  REQUIRED", [NONE] + list(_cards), key="br_card",
+                                 help="Pick the card for the city this video is for. Like the "
+                                      "filler above, you choose it — nothing is auto-detected.")
     with e2:
-        card_up = st.file_uploader("…ya card upload karo", key="br_cup",
+        card_up = st.file_uploader("…or upload a card", key="br_cup",
                                    type=[e[1:] for e in CARD_IMG_EXTS + VID_EXTS])
+
+    if city.strip():
+        st.caption("🏷️ Hashtags: " + " ".join(viral_hashtags(title, city)))
 
     if card_up:
         st.success(f"🖼️ End card: **{card_up.name}**")
     elif card_pick in _cards:
         st.success(f"🖼️ End card: **{os.path.basename(_cards[card_pick])}**")
     else:
-        st.warning("🖼️ End card chuno — iske bina video nahi banega.")
+        st.warning("🖼️ Select an end card — the video won't render without one.")
 
-    if st.button("🎬 Video + app card banao", type="primary", use_container_width=True, key="br_go"):
+    if st.button("🎬 Make video + app card", type="primary", use_container_width=True, key="br_go"):
         if not up:
-            st.error("Pehle video daalo."); return
+            st.error("Add a video first."); return
         src = os.path.join(D, os.path.basename(up.name))
         with open(src, "wb") as w:
             w.write(up.getbuffer())
@@ -731,13 +780,13 @@ def _brand_panel(D):
         elif card_pick in _cards:
             card = _cards[card_pick]
         if not card:
-            st.error("🖼️ **End card chuno** — dropdown se city ka card select karo, "
-                     "ya apna card upload karo."); return
+            st.error("🖼️ **Select an end card** — pick your city's card from the dropdown, "
+                     "or upload one."); return
         out = os.path.join(D, "branded.mp4")
         box, logs = st.empty(), []
         def prog(m): logs.append(str(m)); box.code("\n".join(logs[-8:]))
         try:
-            with st.spinner("Ban raha hai…"):
+            with st.spinner("Rendering…"):
                 brand_video(src, out, D, card, filler=filler, secs=secs,
                             filler_at_start=at_start, filler_before_card=twice, progress=prog)
             st.session_state.br_out = out
@@ -752,9 +801,12 @@ def _brand_panel(D):
         with open(out, "rb") as f:
             st.download_button("⬇️ Download video", f, "branded.mp4", "video/mp4",
                                use_container_width=True, key="br_dl")
-        st.markdown("#### 📋 Caption — ye paste karo, link yahan **clickable** banega")
-        st.code(st.session_state.get("br_cap", ""), language=None)
-        st.download_button("⬇️ caption.txt", st.session_state.get("br_cap", "").encode("utf-8"),
+        cap = st.session_state.get("br_cap", "")
+        st.markdown("#### 📋 Caption — paste this; the link turns clickable where you post it")
+        st.code(cap, language=None)                    # copy button ke saath
+        # yahan bhi ek asli clickable link — test karne ke liye ki link sach me kaam karta hai
+        st.markdown(f"🔗 **Test the link:** [{APP_URL_SHORT}]({APP_URL})")
+        st.download_button("⬇️ caption.txt", cap.encode("utf-8"),
                            "caption.txt", "text/plain", use_container_width=True, key="br_capdl")
 
 
