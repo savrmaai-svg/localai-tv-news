@@ -593,7 +593,7 @@ APP_URL = "https://play.google.com/store/apps/details?id=com.localaitv.app&pcamp
 APP_URL_SHORT = "play.google.com/store/apps/details?id=com.localaitv.app"
 ENDCARD_S = 6
 
-ENDCARD_DIR = os.path.join(APP_DIR, "assets", "endcards")
+ENDCARD_DIR = os.path.join(APP_DIR, "endcards")     # fillers/ intros/ logos/ ke saath, _list_media isi ko dekhta hai
 CARD_IMG_EXTS = (".png", ".jpg", ".jpeg", ".webp")
 
 
