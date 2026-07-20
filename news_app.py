@@ -754,11 +754,22 @@ def _brand_panel(D):
                                  up.name if up else "")
         st.success(f"🖼️ End card: **{os.path.basename(_guess)}** (apne aap chuna)" if _guess
                    else "🖼️ Koi card nahi mila — `assets/endcards/` khaali hai.")
+        # galat card chune to yahan se turant pata chale ki kis naam pe match dhoonda gaya
+        with st.expander("🔎 Kis naam se dhoonda?"):
+            st.write({"City (tumne likha)": city or "—",
+                      "Filler ka naam": (os.path.basename(_f[pick]) if (pick and pick in _f)
+                                         else (f_up.name if f_up else "— koi filler nahi —")),
+                      "Video ka naam": up.name if up else "—",
+                      "Cards available": ", ".join(sorted(
+                          os.path.splitext(f)[0] for f in os.listdir(ENDCARD_DIR)))
+                      if os.path.isdir(ENDCARD_DIR) else "folder nahi mila"})
 
     if st.button("🎬 Video + app card banao", type="primary", use_container_width=True, key="br_go"):
         if not up:
             st.error("Pehle video daalo."); return
-        src = os.path.join(D, "brand_src" + os.path.splitext(up.name)[1])
+        # video ka asli naam bhi rakho — city aksar isi me hoti hai
+        # ("final bullitain guntur.mp4"), aur resolve_endcard() isi se card dhoondta hai
+        src = os.path.join(D, os.path.basename(up.name))
         with open(src, "wb") as w:
             w.write(up.getbuffer())
         filler = None
