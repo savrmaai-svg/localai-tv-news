@@ -597,88 +597,6 @@ ENDCARD_DIR = os.path.join(APP_DIR, "assets", "endcards")
 CARD_IMG_EXTS = (".png", ".jpg", ".jpeg", ".webp")
 
 
-def endcard_for(filler):
-    """Filler ke naam se uska city card dhoondo: fillers/guntur.mp4 -> endcards/guntur.png.
-
-    Exact naam pe mat atko — asli files '19 guntur_1.mp4' ya 'rajahmundry tv.mp4' jaisi hoti
-    hain. Isliye letters-only banaa ke dekhte hain ki city ka naam kahin ANDAR hai ya nahi,
-    aur sabse LAMBA match jeetta hai (warna 'nellore' vs 'vellore' type ulajhan ho sakti hai).
-    Image bhi chalegi aur video bhi. Kuch na mile to None -> card generate ho jaayega."""
-    if not filler or not os.path.isdir(ENDCARD_DIR):
-        return None
-    key = lambda s: "".join(ch for ch in s.lower() if ch.isalnum())
-    stem = key(os.path.splitext(os.path.basename(filler))[0])
-    if not stem:
-        return None
-    hits = []
-    for f in sorted(os.listdir(ENDCARD_DIR)):
-        name, ext = os.path.splitext(f)
-        if ext.lower() in CARD_IMG_EXTS + VID_EXTS and key(name) and key(name) in stem:
-            hits.append(f)
-    if not hits:
-        return None
-    # 'localaitv' main channel ka card hai — handles 'localaitv_guntur' jaise hote hain, to
-    # koi city match mile to wahi lo; localaitv sirf tab jab aur kuch na mile.
-    city = [f for f in hits if key(os.path.splitext(f)[0]) != "localaitv"]
-    best = max(city or hits, key=lambda f: len(key(os.path.splitext(f)[0])))
-    return os.path.join(ENDCARD_DIR, best)
-
-
-def _ocr_city_card(src, samples=8):
-    """Video ke top-right watermark ('RAJAHMUNDRY TV') se card dhoondo.
-
-    Yahi aakhri sahara hai jab file ke naam me city na ho. Watermark animated hota hai
-    (Local AI <-> CITY TV), isliye kai frames dekhte hain. OCR poora naam kabhi nahi deta —
-    'RAJAH ve TV' type kachra aata hai — to card ke naam ke PEHLE 5 akshar dhoondte hain
-    (rajah, gunt u, karim, kurno...) jo aapas me alag hain."""
-    tess = shutil.which("tesseract")
-    if not tess or not os.path.isdir(ENDCARD_DIR):
-        return None
-    dur = _dur(src)
-    if dur <= 0:
-        return None
-    work = tempfile.mkdtemp(prefix="ocr_")
-    text = ""
-    try:
-        for i in range(samples):
-            t = dur * (i + 0.5) / samples
-            png = os.path.join(work, f"f{i}.png")
-            subprocess.run([FF, "-y", "-v", "error", "-ss", f"{t:.2f}", "-i", src, "-frames:v", "1",
-                            "-vf", "crop=iw*0.42:ih*0.28:iw*0.58:0,scale=iw*3:ih*3,"
-                                   "format=gray,eq=contrast=2.0", png], capture_output=True)
-            if not os.path.isfile(png):
-                continue
-            r = subprocess.run([tess, png, "-", "--psm", "7"], capture_output=True, text=True)
-            text += " " + (r.stdout or "")
-        blob = "".join(ch for ch in text.lower() if ch.isalnum())
-        hits = []
-        for f in sorted(os.listdir(ENDCARD_DIR)):
-            name, ext = os.path.splitext(f)
-            if ext.lower() not in CARD_IMG_EXTS + VID_EXTS:
-                continue
-            k = "".join(ch for ch in name.lower() if ch.isalnum())
-            if len(k) >= 5 and k[:5] in blob:
-                hits.append(f)
-        city = [f for f in hits if not f.lower().startswith("localaitv")]
-        return os.path.join(ENDCARD_DIR, (city or hits)[0]) if (city or hits) else None
-    except Exception:
-        return None
-    finally:
-        shutil.rmtree(work, ignore_errors=True)
-
-
-def resolve_endcard(*names):
-    """Jo bhi naam mile unme se pehla match — filler, video ka apna naam, city, kuch bhi.
-    Kuch na mile to main channel ka card. Kabhi khaali haath nahi lautta: card na milne pe
-    render rok dena user ko phasa deta hai, jabki localaitv.png hamesha sahi-hi hota hai."""
-    for n in names:
-        p = endcard_for(n)
-        if p:
-            return p
-    d = os.path.join(ENDCARD_DIR, "localaitv.png")
-    return d if os.path.isfile(d) else None
-
-
 def _endcard_from_image(img, out, secs=ENDCARD_S):
     """Card image ko clip bana do. Image ka aspect video se alag ho to sides usi image ke
     blurred copy se bharte hain — kaali pattiyon se kaafi behtar dikhta hai."""
@@ -717,8 +635,8 @@ def app_caption(title="", city=""):
             f"👇 ఇక్కడ క్లిక్ చేయండి\n{APP_URL}\n\n{tags}\n")
 
 
-def brand_video(src, out, D, filler=None, secs=ENDCARD_S, filler_at_start=False,
-                filler_before_card=True, endcard=None, city="", progress=None):
+def brand_video(src, out, D, endcard, filler=None, secs=ENDCARD_S, filler_at_start=False,
+                filler_before_card=True, progress=None):
     """[filler?] + src + [filler] + [app end card] -> out.
 
     filler_at_start default FALSE hai: news app se bane videos me filler pehle se laga hota hai,
@@ -737,19 +655,10 @@ def brand_video(src, out, D, filler=None, secs=ENDCARD_S, filler_at_start=False,
     parts.append(os.path.join(D, "c_main.mp4"))
     if fill_n and filler_before_card:
         parts.append(fill_n)                              # app card se pehle wahi filler dobara
-    # city -> filler ka naam -> video ka apna naam -> video ke watermark ka OCR;
-    # sab fail ho to main channel ka card
-    card = endcard
-    if not card:
-        for n in (city, filler, src):
-            card = endcard_for(n)
-            if card:
-                break
-    if not card:
-        log("naam se card nahi mila — video ka watermark padh raha hu…")
-        card = _ocr_city_card(src) or resolve_endcard()
-    log(f"end card: {os.path.basename(card) if card else 'NAHI MILA'}")
-    parts.append(make_endcard(os.path.join(D, "d_endcard.mp4"), D, secs, card_file=card))
+    # End card user chunta hai — koi auto-detect nahi. Naam se aur watermark-OCR se guess
+    # karke dekha tha, dono galat card laga dete the aur pata render ke baad chalta tha.
+    log(f"end card: {os.path.basename(endcard)}")
+    parts.append(make_endcard(os.path.join(D, "d_endcard.mp4"), D, secs, card_file=endcard))
     log("joining…")
     _concat(parts, out)
     log(f"DONE → {out}")
@@ -784,51 +693,32 @@ def _brand_panel(D):
                           placeholder="మీ ఊరి తాజా వార్తలు 📺")
 
     _cards = _list_media("endcards", CARD_IMG_EXTS + VID_EXTS, "🖼️")
+    NONE = "— chuno —"
     e1, e2 = st.columns(2, gap="large")
     with e1:
-        card_pick = st.selectbox("🖼️ End card", ["🔄 Filler ke naam se apne aap"] + list(_cards),
-                                 key="br_card",
-                                 help="Filler guntur.mp4 chuna to endcards/guntur.png apne aap "
-                                      "lag jaayega. Yahan se manually bhi chun sakte ho.")
+        card_pick = st.selectbox("🖼️ End card  ·  ZAROORI", [NONE] + list(_cards), key="br_card",
+                                 help="Jis city ka video hai wahi card chuno. Filler jaisa hi — "
+                                      "khud chunna hai, apne aap nahi hoga.")
     with e2:
         card_up = st.file_uploader("…ya card upload karo", key="br_cup",
                                    type=[e[1:] for e in CARD_IMG_EXTS + VID_EXTS])
 
-    # button dabane se PEHLE dikhao ki kaunsa card lagega — pichhli baar chup-chaap galat
-    # card lag gaya tha aur pata render ke baad chala
     if card_up:
-        st.success(f"🖼️ End card: **{card_up.name}** (upload kiya hua)")
+        st.success(f"🖼️ End card: **{card_up.name}**")
     elif card_pick in _cards:
-        st.success(f"🖼️ End card: **{os.path.basename(_cards[card_pick])}** (tune chuna)")
+        st.success(f"🖼️ End card: **{os.path.basename(_cards[card_pick])}**")
     else:
-        _guess = resolve_endcard(city, (_f[pick] if (pick and pick in _f) else
-                                        (f_up.name if f_up else "")),
-                                 up.name if up else "")
-        st.success(f"🖼️ End card: **{os.path.basename(_guess)}** (apne aap chuna)" if _guess
-                   else "🖼️ Koi card nahi mila — `assets/endcards/` khaali hai.")
-        # galat card chune to yahan se turant pata chale ki kis naam pe match dhoonda gaya
-        with st.expander("🔎 Kis naam se dhoonda?"):
-            st.write({"City (tumne likha)": city or "—",
-                      "Filler ka naam": (os.path.basename(_f[pick]) if (pick and pick in _f)
-                                         else (f_up.name if f_up else "— koi filler nahi —")),
-                      "Video ka naam": up.name if up else "—",
-                      "Cards available": ", ".join(sorted(
-                          os.path.splitext(f)[0] for f in os.listdir(ENDCARD_DIR)))
-                      if os.path.isdir(ENDCARD_DIR) else "folder nahi mila"})
+        st.warning("🖼️ End card chuno — iske bina video nahi banega.")
 
     if st.button("🎬 Video + app card banao", type="primary", use_container_width=True, key="br_go"):
         if not up:
             st.error("Pehle video daalo."); return
-        # video ka asli naam bhi rakho — city aksar isi me hoti hai
-        # ("final bullitain guntur.mp4"), aur resolve_endcard() isi se card dhoondta hai
         src = os.path.join(D, os.path.basename(up.name))
         with open(src, "wb") as w:
             w.write(up.getbuffer())
         filler = None
         if f_up:
-            # asli naam rakho (rajahmundry.mp4), fixed naam nahi — endcard_for() isi naam se
-            # city ka card dhoondta hai. basename se path traversal bhi nahi hoga.
-            filler = os.path.join(D, os.path.basename(f_up.name))
+            filler = os.path.join(D, os.path.basename(f_up.name))   # basename = path traversal se bacha
             with open(filler, "wb") as w:
                 w.write(f_up.getbuffer())
         elif pick and pick in _f:
@@ -840,14 +730,16 @@ def _brand_panel(D):
                 w.write(card_up.getbuffer())
         elif card_pick in _cards:
             card = _cards[card_pick]
-        # card None rahe to brand_video khud dhoondh lega: city -> filler -> video ka naam
+        if not card:
+            st.error("🖼️ **End card chuno** — dropdown se city ka card select karo, "
+                     "ya apna card upload karo."); return
         out = os.path.join(D, "branded.mp4")
         box, logs = st.empty(), []
         def prog(m): logs.append(str(m)); box.code("\n".join(logs[-8:]))
         try:
             with st.spinner("Ban raha hai…"):
-                brand_video(src, out, D, filler=filler, secs=secs, filler_at_start=at_start,
-                            filler_before_card=twice, endcard=card, city=city, progress=prog)
+                brand_video(src, out, D, card, filler=filler, secs=secs,
+                            filler_at_start=at_start, filler_before_card=twice, progress=prog)
             st.session_state.br_out = out
             st.session_state.br_cap = app_caption(title, city)
         except Exception as e:
