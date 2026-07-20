@@ -728,9 +728,47 @@ def _endcard_png(png, secs=None):
     return png
 
 
-def make_endcard(out, D, secs=ENDCARD_S):
+ENDCARD_DIR = os.path.join(APP_DIR, "assets", "endcards")
+CARD_IMG_EXTS = (".png", ".jpg", ".jpeg", ".webp")
+
+
+def endcard_for(filler):
+    """Filler ke naam se uska city card dhoondo: fillers/guntur.mp4 -> endcards/guntur.png.
+    Image bhi chalegi aur video bhi — jo pehle mile. Na mile to None (tab card generate hoga)."""
+    if not filler:
+        return None
+    stem = os.path.splitext(os.path.basename(filler))[0].lower()
+    for ext in CARD_IMG_EXTS + VID_EXTS:
+        p = os.path.join(ENDCARD_DIR, stem + ext)
+        if os.path.isfile(p):
+            return p
+    return None
+
+
+def _endcard_from_image(img, out, secs=ENDCARD_S):
+    """Card image ko clip bana do. Image ka aspect video se alag ho to sides usi image ke
+    blurred copy se bharte hain — kaali pattiyon se kaafi behtar dikhta hai."""
+    fc = (f"[0:v]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},"
+          f"boxblur=30:3,eq=brightness=-0.12[bg];"
+          f"[0:v]scale={W}:{H}:force_original_aspect_ratio=decrease[fg];"
+          f"[bg][fg]overlay=(W-w)/2:(H-h)/2,fade=t=in:st=0:d=0.5,format=yuv420p[v]")
+    subprocess.run([FF, "-y", "-v", "error", "-loop", "1", "-t", str(secs), "-i", img,
+                    "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
+                    "-filter_complex", fc, "-map", "[v]", "-map", "1:a", "-t", str(secs),
+                    "-r", str(FPS), "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+                    "-c:a", "aac", "-b:a", "160k", "-ar", "44100", "-ac", "2", out], check=True)
+    return out
+
+
+def make_endcard(out, D, secs=ENDCARD_S, card_file=None):
     """App-download end card (W x H, silent audio).
-    Pehle Chrome se (Telugu sabse sahi); wo na chale to libass wala purana rasta."""
+    card_file diya ho to wahi use hota hai (city ka apna card). Warna Chrome se generate
+    (Telugu sabse sahi), aur wo na chale to libass wala purana rasta."""
+    if card_file and os.path.isfile(card_file):
+        if card_file.lower().endswith(CARD_IMG_EXTS):
+            return _endcard_from_image(card_file, out, secs)
+        _normalize(card_file, out)                 # animated card — apni poori length chalega
+        return out
     if os.path.isfile(NOTO_TTF):
         try:
             _ensure_chromium()
@@ -781,7 +819,7 @@ def app_caption(title="", city=""):
 
 
 def brand_video(src, out, D, filler=None, secs=ENDCARD_S, filler_at_start=False,
-                filler_before_card=True, progress=None):
+                filler_before_card=True, endcard=None, progress=None):
     """[filler?] + src + [filler] + [app end card] -> out.
 
     filler_at_start default FALSE hai: news app se bane videos me filler pehle se laga hota hai,
@@ -800,8 +838,9 @@ def brand_video(src, out, D, filler=None, secs=ENDCARD_S, filler_at_start=False,
     parts.append(os.path.join(D, "c_main.mp4"))
     if fill_n and filler_before_card:
         parts.append(fill_n)                              # app card se pehle wahi filler dobara
-    log("making app end card…")
-    parts.append(make_endcard(os.path.join(D, "d_endcard.mp4"), D, secs))
+    card = endcard or endcard_for(filler)          # filler ke naam se city ka card
+    log(f"end card: {os.path.basename(card) if card else 'auto-generated'}")
+    parts.append(make_endcard(os.path.join(D, "d_endcard.mp4"), D, secs, card_file=card))
     log("joining…")
     _concat(parts, out)
     log(f"DONE → {out}")
@@ -833,6 +872,17 @@ def _brand_panel(D):
     title = st.text_input("📰 Caption ki pehli line", "", key="br_title",
                           placeholder="మీ ఊరి తాజా వార్తలు 📺")
 
+    _cards = _list_media("endcards", CARD_IMG_EXTS + VID_EXTS, "🖼️")
+    e1, e2 = st.columns(2, gap="large")
+    with e1:
+        card_pick = st.selectbox("🖼️ End card", ["🔄 Filler ke naam se apne aap"] + list(_cards),
+                                 key="br_card",
+                                 help="Filler guntur.mp4 chuna to endcards/guntur.png apne aap "
+                                      "lag jaayega. Yahan se manually bhi chun sakte ho.")
+    with e2:
+        card_up = st.file_uploader("…ya card upload karo", key="br_cup",
+                                   type=[e[1:] for e in CARD_IMG_EXTS + VID_EXTS])
+
     if st.button("🎬 Video + app card banao", type="primary", use_container_width=True, key="br_go"):
         if not up:
             st.error("Pehle video daalo."); return
@@ -846,13 +896,20 @@ def _brand_panel(D):
                 w.write(f_up.getbuffer())
         elif pick and pick in _f:
             filler = _f[pick]
+        card = None
+        if card_up:
+            card = os.path.join(D, "brand_card" + os.path.splitext(card_up.name)[1])
+            with open(card, "wb") as w:
+                w.write(card_up.getbuffer())
+        elif card_pick in _cards:
+            card = _cards[card_pick]               # warna None -> filler ke naam se auto
         out = os.path.join(D, "branded.mp4")
         box, logs = st.empty(), []
         def prog(m): logs.append(str(m)); box.code("\n".join(logs[-8:]))
         try:
             with st.spinner("Ban raha hai…"):
                 brand_video(src, out, D, filler=filler, secs=secs, filler_at_start=at_start,
-                            filler_before_card=twice, progress=prog)
+                            filler_before_card=twice, endcard=card, progress=prog)
             st.session_state.br_out = out
             st.session_state.br_cap = app_caption(title, city)
         except Exception as e:
