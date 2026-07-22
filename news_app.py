@@ -863,6 +863,50 @@ def make_thumbnail(frame_png, out, D, headline, city="", sub="", w=1280, h=720):
     return out
 
 
+def copy_box(text, key, height=260):
+    """Ek-click copy jo plain HTTP pe bhi chale.
+
+    st.code ka apna copy button navigator.clipboard use karta hai, aur browser wo API sirf
+    secure context (https ya localhost) me deta hai. App http://<ip>:8502 pe chalta hai, to
+    wahan button dabta hai par kuch hota nahi. Purana document.execCommand('copy') insecure
+    context me bhi kaam karta hai — pehle wahi, aur mile to naya API fallback me."""
+    import html as _h
+    import streamlit.components.v1 as components
+    uid = f"cb{key}"
+    components.html(f"""
+<style>
+  .cbwrap{{font-family:Inter,system-ui,sans-serif}}
+  .cbta{{width:100%;height:{height - 58}px;background:#0d1220;color:#dfe6f5;
+        border:1px solid #2a3350;border-radius:12px;padding:12px;font-size:14px;
+        line-height:1.55;resize:vertical}}
+  .cbbtn{{margin-top:8px;width:100%;padding:11px;border:none;border-radius:10px;
+        background:linear-gradient(90deg,#7c5cff,#22d3ee);color:#06101f;
+        font-weight:700;font-size:15px;cursor:pointer}}
+  .cbbtn:hover{{filter:brightness(1.08)}}
+  .cbbtn.ok{{background:#00C853}}
+</style>
+<div class="cbwrap">
+  <textarea class="cbta" id="{uid}" readonly>{_h.escape(text)}</textarea>
+  <button class="cbbtn" id="{uid}b">📋 Copy</button>
+</div>
+<script>
+(function(){{
+  var ta=document.getElementById("{uid}"), b=document.getElementById("{uid}b");
+  b.onclick=function(){{
+    ta.select(); ta.setSelectionRange(0, 999999);          // mobile ke liye bhi
+    var ok=false;
+    try {{ ok=document.execCommand("copy"); }} catch(e) {{}}
+    if(!ok && navigator.clipboard){{
+      try {{ navigator.clipboard.writeText(ta.value); ok=true; }} catch(e) {{}}
+    }}
+    b.textContent = ok ? "✅ Copied!" : "⚠️ Ctrl+C dabao";
+    b.className = "cbbtn" + (ok ? " ok" : "");
+    setTimeout(function(){{ b.textContent="📋 Copy"; b.className="cbbtn"; }}, 1800);
+  }};
+}})();
+</script>""", height=height)
+
+
 def app_caption(title="", city=""):
     """This is where the link actually becomes clickable — the post caption/description."""
     head = title.strip() or "మీ ఊరి తాజా వార్తలు 📺"
@@ -1021,7 +1065,7 @@ def _brand_panel(D):
                                use_container_width=True, key="br_dl")
         cap = st.session_state.get("br_cap", "")
         st.markdown("#### 📋 Caption — paste this; the link turns clickable where you post it")
-        st.code(cap, language=None)                    # copy button ke saath
+        copy_box(cap, "sh")                            # ek-click copy (HTTP pe bhi)
         # yahan bhi ek asli clickable link — test karne ke liye ki link sach me kaam karta hai
         st.markdown(f"🔗 **Test the link:** [{APP_URL_SHORT}]({APP_URL})")
         st.download_button("⬇️ caption.txt", cap.encode("utf-8"),
@@ -1361,7 +1405,7 @@ def _shorts_panel(D):
                                use_container_width=True, key="sh_dl")
         cap = st.session_state.get("sh_cap", "")
         st.markdown("#### 📋 Caption — paste this; the link turns clickable where you post it")
-        st.code(cap, language=None)
+        copy_box(cap, "br")                            # ek-click copy (HTTP pe bhi)
         st.markdown(f"🔗 **Test the link:** [{APP_URL_SHORT}]({APP_URL})")
         st.download_button("⬇️ caption.txt", cap.encode("utf-8"), "caption.txt", "text/plain",
                            use_container_width=True, key="sh_capdl")
