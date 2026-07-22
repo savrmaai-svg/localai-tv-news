@@ -741,6 +741,116 @@ def viral_hashtags(text="", city="", limit=14):
     return out[:limit]
 
 
+# ---------------- Thumbnail maker ----------------
+# Ek hi design se teen size: 16:9 (YouTube/Facebook), 4:5 (Instagram feed), 1:1 (square).
+# Frame video se khud chuna jaata hai — sabse SAAF frame, kyunki dhundhla thumbnail koi click
+# nahi karta. Text Chrome se render hota hai; libass Telugu ke conjuncts tod deta hai.
+THUMB_SIZES = {"16:9  YouTube / Facebook": (1280, 720),
+               "4:5   Instagram feed": (1080, 1350),
+               "1:1   Square": (1080, 1080)}
+
+
+def thumb_candidates(src, D, n=6):
+    """Video me se n sabse saaf frames. Sharpness = Laplacian variance — dhundhle aur
+    motion-blur wale frames apne aap bahar ho jaate hain."""
+    import cv2
+    dur = _dur(src) or 1.0
+    out = []
+    for i in range(n * 3):                          # zyada dekho, best n rakho
+        t = dur * (i + 0.5) / (n * 3)
+        p = os.path.join(D, f"cand{i:02d}.png")
+        subprocess.run([FF, "-y", "-v", "error", "-ss", f"{t:.2f}", "-i", src,
+                        "-frames:v", "1", "-vf", "scale=1280:-2", p], capture_output=True)
+        if not os.path.isfile(p):
+            continue
+        g = cv2.imread(p, cv2.IMREAD_GRAYSCALE)
+        if g is None:
+            continue
+        sharp = cv2.Laplacian(g, cv2.CV_64F).var()
+        bright = g.mean()
+        if bright < 25 or bright > 240:             # kaala ya jala hua frame chhod do
+            continue
+        out.append((sharp, t, p))
+    out.sort(reverse=True)
+    return [(t, p) for _s, t, p in out[:n]]
+
+
+_THUMB_HTML = """<!doctype html><meta charset="utf-8"><style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{position:relative;width:%(w)dpx;height:%(h)dpx;overflow:hidden;
+     font-family:'Noto Sans Telugu','Nirmala UI',sans-serif;
+     background:#000 url('%(img)s') center/cover no-repeat;}
+.shade{position:absolute;inset:0;
+  background:linear-gradient(180deg, rgba(0,0,0,.45) 0%%, rgba(0,0,0,.05) 32%%,
+             rgba(0,0,0,.72) 66%%, rgba(0,0,0,.93) 100%%);}
+.top{position:absolute;top:%(pad)dpx;left:%(pad)dpx;right:%(pad)dpx;
+     display:flex;align-items:center;gap:%(g)dpx;}
+.city{font-family:Arial,sans-serif;font-size:%(f_city)dpx;font-weight:700;letter-spacing:2px;
+  background:#E23B2E;color:#fff;padding:%(cp1)dpx %(cp2)dpx;border-radius:8px;}
+/* brand NEECHE-DAAYEIN. Source video ka apna watermark upar-daayein hota hai — dono ek
+   jagah rakhne se ek doosre pe chadh jaate the. */
+.brand{position:absolute;right:%(pad)dpx;bottom:%(pad)dpx;
+  font-family:Arial,sans-serif;font-size:%(f_brand)dpx;font-weight:700;
+  color:#fff;text-shadow:0 2px 10px rgba(0,0,0,.9);opacity:.92;}
+.brand b{color:#E23B2E;}
+.bottom{position:absolute;left:%(pad)dpx;right:%(pad)dpx;bottom:%(pad)dpx;}
+.bar{width:%(barw)dpx;height:%(barh)dpx;background:#FFC43C;border-radius:99px;
+     margin-bottom:%(g)dpx;}
+.head{font-size:%(f_head)dpx;font-weight:700;color:#fff;line-height:1.22;
+  text-shadow:0 4px 18px rgba(0,0,0,.95), 0 2px 4px rgba(0,0,0,.9);}
+.sub{margin-top:%(g)dpx;display:inline-block;font-size:%(f_sub)dpx;font-weight:700;
+  color:#0C1A38;background:#FFC43C;padding:%(sp1)dpx %(sp2)dpx;border-radius:99px;}
+</style>
+<div class="shade"></div>
+<div class="top"><div class="city">%(city)s</div></div>
+<div class="brand">LOCAL AI <b>TV</b></div>
+<div class="bottom"><div class="bar"></div>
+  <div class="head">%(head)s</div>%(sub)s</div>
+"""
+
+_THUMB_RENDER = '''# -*- coding: utf-8 -*-
+import sys
+from playwright.sync_api import sync_playwright
+html, png, w, h = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4])
+with sync_playwright() as p:
+    b = p.chromium.launch()
+    pg = b.new_page(viewport={"width": w, "height": h})
+    pg.goto("file:///" + html.replace("\\\\", "/"))
+    pg.wait_for_timeout(300)
+    pg.screenshot(path=png)
+    b.close()
+'''
+
+
+def make_thumbnail(frame_png, out, D, headline, city="", sub="", w=1280, h=720):
+    """Frame + Telugu headline -> thumbnail. Chrome me render hota hai (alag process me,
+    kyunki Streamlit ke thread se playwright subprocess nahi bana sakta)."""
+    import base64, sys
+    k = min(w, h) / 720.0
+    px = lambda v: max(10, round(v * k))
+    with open(frame_png, "rb") as f:
+        img = "data:image/png;base64," + base64.b64encode(f.read()).decode()
+    html = _THUMB_HTML % {
+        "w": w, "h": h, "img": img, "head": headline,
+        "city": (city or "LOCAL").upper(),
+        "sub": f'<div class="sub">{sub}</div>' if sub else "",
+        "pad": px(38), "g": px(14), "barw": px(90), "barh": px(8),
+        "f_head": px(62), "f_city": px(24), "f_brand": px(26), "f_sub": px(28),
+        "cp1": px(7), "cp2": px(18), "sp1": px(8), "sp2": px(22)}
+    hp = os.path.join(D, "thumb.html")
+    with open(hp, "w", encoding="utf-8") as f:
+        f.write(html)
+    sp = os.path.join(D, "_thumb_render.py")
+    with open(sp, "w", encoding="utf-8") as f:
+        f.write(_THUMB_RENDER)
+    r = subprocess.run([sys.executable, sp, hp, out, str(w), str(h)],
+                       capture_output=True, text=True)
+    if r.returncode != 0 or not os.path.isfile(out):
+        raise RuntimeError("Thumbnail render fail hua:\n" +
+                           (r.stderr or r.stdout or "koi output nahi")[-500:])
+    return out
+
+
 def app_caption(title="", city=""):
     """This is where the link actually becomes clickable — the post caption/description."""
     head = title.strip() or "మీ ఊరి తాజా వార్తలు 📺"
@@ -779,6 +889,74 @@ def brand_video(src, out, D, endcard, filler=None, secs=ENDCARD_S, filler_at_sta
     _concat(parts, out)
     log(f"DONE → {out}")
     return out
+
+
+def _thumb_panel(D):
+    """UI: video in -> click-worthy thumbnail out (YouTube / Facebook / Instagram)."""
+    st.caption("Drop in a video → the app picks the **sharpest frames**, you add a headline, "
+               "and it renders a thumbnail in all three sizes.")
+    up = st.file_uploader("🎬 Video", key="tb_up",
+                          type=["mp4", "mov", "webm", "mkv", "avi", "m4v", "mpeg", "mpg", "ts"])
+    c1, c2 = st.columns([2, 1], gap="large")
+    with c1:
+        head = st.text_area("📰 Headline (Telugu)", "", key="tb_head", height=90,
+                            placeholder="తుని ఇందిరమ్మ ఇళ్ల పంపిణీ\nCM సంచలన ప్రకటన",
+                            help="2 short lines beat 1 long one — big text is what makes "
+                                 "people stop scrolling.")
+    with c2:
+        city = st.text_input("📍 City badge", "", key="tb_city", placeholder="RAJAHMUNDRY")
+        sub = st.text_input("🏷️ Yellow strip (optional)", "", key="tb_sub",
+                            placeholder="పూర్తి వివరాలు")
+
+    if st.button("🔍 Find the best frames", use_container_width=True, key="tb_scan"):
+        if not up:
+            st.error("Add a video first.")
+        else:
+            src = os.path.join(D, "tb_" + os.path.basename(up.name))
+            with open(src, "wb") as w:
+                w.write(up.getbuffer())
+            with st.spinner("Scanning frames…"):
+                st.session_state.tb_cands = thumb_candidates(src, D)
+
+    cands = st.session_state.get("tb_cands")
+    if cands:
+        st.markdown("##### Pick a frame — sharpest first")
+        cols = st.columns(min(6, len(cands)))
+        for i, (col, (t, p)) in enumerate(zip(cols, cands)):
+            with col:
+                st.image(p, use_container_width=True)
+                if st.button(f"{t:.0f}s", key=f"tb_pick{i}", use_container_width=True,
+                             type="primary" if st.session_state.get("tb_sel") == p else "secondary"):
+                    st.session_state.tb_sel = p
+                    st.rerun()
+
+    frame = st.session_state.get("tb_sel")
+    if frame and os.path.isfile(frame):
+        if st.button("🖼️ Make thumbnails", type="primary", use_container_width=True, key="tb_go"):
+            if not head.strip():
+                st.error("Write a headline first.")
+            else:
+                made = {}
+                try:
+                    with st.spinner("Rendering…"):
+                        for label, (w_, h_) in THUMB_SIZES.items():
+                            out = os.path.join(D, f"thumb_{w_}x{h_}.png")
+                            made[label] = make_thumbnail(frame, out, D, head.strip(),
+                                                         city, sub.strip(), w_, h_)
+                    st.session_state.tb_out = made
+                except Exception as e:
+                    st.error("Thumbnail error: " + (str(e) or repr(e))[:400])
+
+    made = st.session_state.get("tb_out")
+    if made:
+        st.success(f"✅ {len(made)} thumbnails ready")
+        for label, path in made.items():
+            st.markdown(f"**{label}**")
+            st.image(path, use_container_width=True)
+            with open(path, "rb") as f:
+                st.download_button(f"⬇️ Download {label.split()[0]}", f,
+                                   os.path.basename(path), "image/png",
+                                   use_container_width=True, key=f"tb_dl{label}")
 
 
 def _brand_panel(D):
@@ -1288,6 +1466,10 @@ def main():
 
     with st.expander("🔗  App Link Maker — filler shuru me + app download card end me", expanded=False):
         _brand_panel(D)
+
+    with st.expander("🖼️  Thumbnail Maker — video se click-worthy thumbnail (YT · FB · IG)",
+                     expanded=False):
+        _thumb_panel(D)
 
     left, right = st.columns([1.55, 1], gap="large")
     with left:
