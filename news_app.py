@@ -891,74 +891,6 @@ def brand_video(src, out, D, endcard, filler=None, secs=ENDCARD_S, filler_at_sta
     return out
 
 
-def _thumb_panel(D):
-    """UI: video in -> click-worthy thumbnail out (YouTube / Facebook / Instagram)."""
-    st.caption("Drop in a video → the app picks the **sharpest frames**, you add a headline, "
-               "and it renders a thumbnail in all three sizes.")
-    up = st.file_uploader("🎬 Video", key="tb_up",
-                          type=["mp4", "mov", "webm", "mkv", "avi", "m4v", "mpeg", "mpg", "ts"])
-    c1, c2 = st.columns([2, 1], gap="large")
-    with c1:
-        head = st.text_area("📰 Headline (Telugu)", "", key="tb_head", height=90,
-                            placeholder="తుని ఇందిరమ్మ ఇళ్ల పంపిణీ\nCM సంచలన ప్రకటన",
-                            help="2 short lines beat 1 long one — big text is what makes "
-                                 "people stop scrolling.")
-    with c2:
-        city = st.text_input("📍 City badge", "", key="tb_city", placeholder="RAJAHMUNDRY")
-        sub = st.text_input("🏷️ Yellow strip (optional)", "", key="tb_sub",
-                            placeholder="పూర్తి వివరాలు")
-
-    if st.button("🔍 Find the best frames", use_container_width=True, key="tb_scan"):
-        if not up:
-            st.error("Add a video first.")
-        else:
-            src = os.path.join(D, "tb_" + os.path.basename(up.name))
-            with open(src, "wb") as w:
-                w.write(up.getbuffer())
-            with st.spinner("Scanning frames…"):
-                st.session_state.tb_cands = thumb_candidates(src, D)
-
-    cands = st.session_state.get("tb_cands")
-    if cands:
-        st.markdown("##### Pick a frame — sharpest first")
-        cols = st.columns(min(6, len(cands)))
-        for i, (col, (t, p)) in enumerate(zip(cols, cands)):
-            with col:
-                st.image(p, use_container_width=True)
-                if st.button(f"{t:.0f}s", key=f"tb_pick{i}", use_container_width=True,
-                             type="primary" if st.session_state.get("tb_sel") == p else "secondary"):
-                    st.session_state.tb_sel = p
-                    st.rerun()
-
-    frame = st.session_state.get("tb_sel")
-    if frame and os.path.isfile(frame):
-        if st.button("🖼️ Make thumbnails", type="primary", use_container_width=True, key="tb_go"):
-            if not head.strip():
-                st.error("Write a headline first.")
-            else:
-                made = {}
-                try:
-                    with st.spinner("Rendering…"):
-                        for label, (w_, h_) in THUMB_SIZES.items():
-                            out = os.path.join(D, f"thumb_{w_}x{h_}.png")
-                            made[label] = make_thumbnail(frame, out, D, head.strip(),
-                                                         city, sub.strip(), w_, h_)
-                    st.session_state.tb_out = made
-                except Exception as e:
-                    st.error("Thumbnail error: " + (str(e) or repr(e))[:400])
-
-    made = st.session_state.get("tb_out")
-    if made:
-        st.success(f"✅ {len(made)} thumbnails ready")
-        for label, path in made.items():
-            st.markdown(f"**{label}**")
-            st.image(path, use_container_width=True)
-            with open(path, "rb") as f:
-                st.download_button(f"⬇️ Download {label.split()[0]}", f,
-                                   os.path.basename(path), "image/png",
-                                   use_container_width=True, key=f"tb_dl{label}")
-
-
 def _brand_panel(D):
     """UI: any video -> filler at the start + app download card at the end + ready caption."""
     st.caption("Drop in any video → a **filler at the start** and an **app download card at the "
@@ -998,6 +930,13 @@ def _brand_panel(D):
     with e2:
         card_up = st.file_uploader("…or upload a card", key="br_cup",
                                    type=[e[1:] for e in CARD_IMG_EXTS + VID_EXTS])
+
+    # Thumbnail ke liye alag section rakhne ka matlab nahi tha — video, headline aur city
+    # teeno yahin pehle se hain, to render ke saath hi bana dete hain.
+    thumb_on = st.checkbox("🖼️ Thumbnail bhi banao (YouTube · Facebook · Instagram)", True,
+                           key="br_thumb",
+                           help="Sabse saaf frame khud chun ke, upar wali headline aur city "
+                                "ke saath — teeno size ek saath.")
 
     if city.strip():
         st.caption("🏷️ Hashtags: " + " ".join(viral_hashtags(title, city)))
@@ -1044,6 +983,23 @@ def _brand_panel(D):
         except Exception as e:
             st.error("Branding error: " + str(e)); return
 
+        st.session_state.br_thumbs = {}
+        if thumb_on:
+            # thumbnail fail ho to video fir bhi mile — isliye alag try me
+            try:
+                with st.spinner("Thumbnail bana raha hu…"):
+                    cands = thumb_candidates(src, D, n=4)
+                    if cands:
+                        st.session_state.br_frames = cands
+                        head = title.strip() or "మీ ఊరి తాజా వార్తలు"
+                        st.session_state.br_thumbs = {
+                            lbl: make_thumbnail(cands[0][1],
+                                                os.path.join(D, f"thumb_{w}x{h}.png"),
+                                                D, head, city, "", w, h)
+                            for lbl, (w, h) in THUMB_SIZES.items()}
+            except Exception as e:
+                st.warning("Thumbnail nahi bana (video mil gaya hai): " + str(e)[:200])
+
     out = st.session_state.get("br_out")
     if out and os.path.isfile(out):
         st.success("✅ Ready!")
@@ -1058,6 +1014,34 @@ def _brand_panel(D):
         st.markdown(f"🔗 **Test the link:** [{APP_URL_SHORT}]({APP_URL})")
         st.download_button("⬇️ caption.txt", cap.encode("utf-8"),
                            "caption.txt", "text/plain", use_container_width=True, key="br_capdl")
+
+        thumbs = st.session_state.get("br_thumbs") or {}
+        if thumbs:
+            st.markdown("#### 🖼️ Thumbnails")
+            for lbl, path in thumbs.items():
+                if os.path.isfile(path):
+                    st.markdown(f"**{lbl}**")
+                    st.image(path, use_container_width=True)
+                    with open(path, "rb") as f:
+                        st.download_button(f"⬇️ {lbl.split()[0]}", f, os.path.basename(path),
+                                           "image/png", use_container_width=True,
+                                           key=f"br_tdl{lbl}")
+            # pehla frame hamesha sabse acha nahi hota — doosra chunne ka option
+            frames = st.session_state.get("br_frames") or []
+            if len(frames) > 1:
+                with st.expander("🔄 Koi aur frame chahiye?"):
+                    cols = st.columns(len(frames))
+                    for i, (col, (t, p)) in enumerate(zip(cols, frames)):
+                        with col:
+                            st.image(p, use_container_width=True)
+                            if st.button(f"{t:.0f}s", key=f"br_fr{i}", use_container_width=True):
+                                head = st.session_state.get("br_title", "") or "మీ ఊరి తాజా వార్తలు"
+                                st.session_state.br_thumbs = {
+                                    lbl: make_thumbnail(
+                                        p, os.path.join(D, f"thumb_{w}x{h}.png"), D,
+                                        head, st.session_state.get("br_city", ""), "", w, h)
+                                    for lbl, (w, h) in THUMB_SIZES.items()}
+                                st.rerun()
 
 
 # ---------------- Streamlit UI ----------------
@@ -1467,9 +1451,6 @@ def main():
     with st.expander("🔗  App Link Maker — filler shuru me + app download card end me", expanded=False):
         _brand_panel(D)
 
-    with st.expander("🖼️  Thumbnail Maker — video se click-worthy thumbnail (YT · FB · IG)",
-                     expanded=False):
-        _thumb_panel(D)
 
     left, right = st.columns([1.55, 1], gap="large")
     with left:
