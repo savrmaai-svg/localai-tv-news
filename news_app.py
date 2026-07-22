@@ -875,8 +875,11 @@ def copy_box(text, key, height=260):
     uid = f"cb{key}"
     components.html(f"""
 <style>
+  /* iframe ke body ka default 8px margin reset karna zaroori hai — warna button
+     iframe ki height se bahar nikal ke kat jaata hai */
+  *{{box-sizing:border-box}} html,body{{margin:0;padding:0}}
   .cbwrap{{font-family:Inter,system-ui,sans-serif}}
-  .cbta{{width:100%;height:{height - 58}px;background:#0d1220;color:#dfe6f5;
+  .cbta{{width:100%;height:{max(90, height - 78)}px;background:#0d1220;color:#dfe6f5;
         border:1px solid #2a3350;border-radius:12px;padding:12px;font-size:14px;
         line-height:1.55;resize:vertical}}
   .cbbtn{{margin-top:8px;width:100%;padding:11px;border:none;border-radius:10px;
