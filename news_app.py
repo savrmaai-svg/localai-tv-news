@@ -780,9 +780,9 @@ _THUMB_HTML = """<!doctype html><meta charset="utf-8"><style>
 body{position:relative;width:%(w)dpx;height:%(h)dpx;overflow:hidden;
      font-family:'Noto Sans Telugu','Nirmala UI',sans-serif;
      background:#000 url('%(img)s') center/cover no-repeat;}
-.shade{position:absolute;inset:0;
-  background:linear-gradient(180deg, rgba(0,0,0,.45) 0%%, rgba(0,0,0,.05) 32%%,
-             rgba(0,0,0,.72) 66%%, rgba(0,0,0,.93) 100%%);}
+/* Shade sirf text ko padhne layak banane ke liye hai. Text na ho to bhaari gradient sirf
+   tasveer ko dulla kar deta hai — isliye tab bahut halka rakha jaata hai. */
+.shade{position:absolute;inset:0;background:%(shade)s;}
 .top{position:absolute;top:%(pad)dpx;left:%(pad)dpx;right:%(pad)dpx;
      display:flex;align-items:center;gap:%(g)dpx;}
 .city{font-family:Arial,sans-serif;font-size:%(f_city)dpx;font-weight:700;letter-spacing:2px;
@@ -802,10 +802,9 @@ body{position:relative;width:%(w)dpx;height:%(h)dpx;overflow:hidden;
   color:#0C1A38;background:#FFC43C;padding:%(sp1)dpx %(sp2)dpx;border-radius:99px;}
 </style>
 <div class="shade"></div>
-<div class="top"><div class="city">%(city)s</div></div>
+%(city)s
 <div class="brand">LOCAL AI <b>TV</b></div>
-<div class="bottom"><div class="bar"></div>
-  <div class="head">%(head)s</div>%(sub)s</div>
+%(bottom)s
 """
 
 _THUMB_RENDER = '''# -*- coding: utf-8 -*-
@@ -830,10 +829,23 @@ def make_thumbnail(frame_png, out, D, headline, city="", sub="", w=1280, h=720):
     px = lambda v: max(10, round(v * k))
     with open(frame_png, "rb") as f:
         img = "data:image/png;base64," + base64.b64encode(f.read()).decode()
+    # Khaali ka matlab KHAALI. Pehle yahan fallback the ("LOCAL" badge aur ek default
+    # headline) — user kuch na likhe to bhi thumbnail par text chipak jaata tha.
+    headline, city, sub = (headline or "").strip(), (city or "").strip(), (sub or "").strip()
+    bottom = ""
+    if headline or sub:
+        bottom = ('<div class="bottom">'
+                  + ('<div class="bar"></div>' if headline else "")
+                  + (f'<div class="head">{headline}</div>' if headline else "")
+                  + (f'<div class="sub">{sub}</div>' if sub else "")
+                  + "</div>")
     html = _THUMB_HTML % {
-        "w": w, "h": h, "img": img, "head": headline,
-        "city": (city or "LOCAL").upper(),
-        "sub": f'<div class="sub">{sub}</div>' if sub else "",
+        "w": w, "h": h, "img": img,
+        "city": f'<div class="top"><div class="city">{city.upper()}</div></div>' if city else "",
+        "bottom": bottom,
+        "shade": ("linear-gradient(180deg, rgba(0,0,0,.45) 0%, rgba(0,0,0,.05) 32%,"
+                  " rgba(0,0,0,.72) 66%, rgba(0,0,0,.93) 100%)" if bottom else
+                  "linear-gradient(180deg, rgba(0,0,0,0) 60%, rgba(0,0,0,.45) 100%)"),
         "pad": px(38), "g": px(14), "barw": px(90), "barh": px(8),
         "f_head": px(62), "f_city": px(24), "f_brand": px(26), "f_sub": px(28),
         "cp1": px(7), "cp2": px(18), "sp1": px(8), "sp2": px(22)}
@@ -991,7 +1003,7 @@ def _brand_panel(D):
                     cands = thumb_candidates(src, D, n=4)
                     if cands:
                         st.session_state.br_frames = cands
-                        head = title.strip() or "మీ ఊరి తాజా వార్తలు"
+                        head = title.strip()      # khaali chhoda = saaf thumbnail, sirf brand
                         st.session_state.br_thumbs = {
                             lbl: make_thumbnail(cands[0][1],
                                                 os.path.join(D, f"thumb_{w}x{h}.png"),
